@@ -23,18 +23,23 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+    defaults:
+      run:
+        working-directory: .
+
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
       - name: Setup Java
-        uses: actions/setup-java@v3
+        uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
           java-version: '17'
+
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.38.5'
+          flutter-version: '3.32.0'
           channel: 'stable'
 
       - name: Get dependencies
@@ -47,12 +52,20 @@ jobs:
           echo "kotlin.daemon.jvmargs=-Xmx1536m" >> ~/.gradle/gradle.properties
 
       - name: Build APK
-        run: flutter build apk --release
+        run: flutter build apk --release 2>&1 | tee build_apk.log
+        continue-on-error: true
+        id: build_apk
 
       - name: Build App Bundle
-        run: flutter build appbundle --release
+        if: steps.build_apk.outcome == 'success'
+        run: flutter build appbundle --release 2>&1 | tee build_aab.log
+        continue-on-error: true
+        id: build_aab
+
+      # ── Артефакты при успехе ──────────────────────────────────────────────
 
       - name: Upload APK artifact
+        if: steps.build_apk.outcome == 'success'
         uses: actions/upload-artifact@v4
         with:
           name: komet-android-apk
@@ -60,8 +73,54 @@ jobs:
           retention-days: 30
 
       - name: Upload App Bundle artifact
+        if: steps.build_aab.outcome == 'success'
         uses: actions/upload-artifact@v4
         with:
           name: komet-android-aab
           path: build/app/outputs/bundle/release/app-release.aab
           retention-days: 30
+
+      # ── Сбор логов при ошибке ─────────────────────────────────────────────
+
+      - name: Collect error logs
+        if: failure() || steps.build_apk.outcome == 'failure'
+        run: |
+          mkdir -p error_logs
+
+          # Логи сборки Flutter
+          [ -f build_apk.log ] && cp build_apk.log error_logs/ || true
+          [ -f build_aab.log ] && cp build_aab.log error_logs/ || true
+
+          # Gradle логи
+          find . -path "*/build/reports" -type d | while read d; do
+            cp -r "$d" error_logs/gradle_reports 2>/dev/null || true
+          done
+
+          # Последний Gradle build scan (если есть)
+          find ~/.gradle -name "*.log" 2>/dev/null | head -5 | while read f; do
+            cp "$f" error_logs/ 2>/dev/null || true
+          done
+
+          # flutter doctor для диагностики окружения
+          flutter doctor -v > error_logs/flutter_doctor.txt 2>&1 || true
+
+          # pubspec.lock для проверки зависимостей
+          [ -f pubspec.lock ] && cp pubspec.lock error_logs/ || true
+
+          echo "=== Files in error_logs ===" && ls -lh error_logs/
+
+      - name: Upload error logs
+        if: failure() || steps.build_apk.outcome == 'failure'
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-build-error-logs
+          path: error_logs/
+          retention-days: 7
+
+      # ── Завершаем с ошибкой если сборка упала ────────────────────────────
+
+      - name: Fail if build failed
+        if: steps.build_apk.outcome == 'failure'
+        run: |
+          echo "❌ Android build failed. Download 'android-build-error-logs' artifact for details."
+          exit 1
