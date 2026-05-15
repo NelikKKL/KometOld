@@ -106,16 +106,45 @@ class _ChatsScreenState extends State<ChatsScreen>
 
   SharedPreferences? _prefs;
   Map<int, Map<String, dynamic>> _chatDrafts = {};
+  final Set<int> _hiddenChatIds = {};
 
   Future<void> _initializePrefs() async {
     final p = await SharedPreferences.getInstance();
+    final hiddenList = p.getStringList('hidden_chat_ids') ?? [];
     if (mounted) {
       setState(() {
         _prefs = p;
+        _hiddenChatIds.addAll(hiddenList.map(int.parse));
       });
     } else {
       _prefs = p;
+      _hiddenChatIds.addAll(hiddenList.map(int.parse));
     }
+  }
+
+  Future<void> _hideChatForever(int chatId) async {
+    _hiddenChatIds.add(chatId);
+    final prefs = _prefs ?? await SharedPreferences.getInstance();
+    await prefs.setStringList(
+      'hidden_chat_ids',
+      _hiddenChatIds.map((id) => id.toString()).toList(),
+    );
+    if (mounted) {
+      setState(() {
+        _allChats.removeWhere((c) => c.id == chatId);
+        _filteredChats.removeWhere((c) => c.id == chatId);
+      });
+    }
+  }
+
+  void _showHideChatWarning(int chatId, String chatTitle) {
+    showDialog(
+      context: context,
+      builder: (ctx) => _HideChatWarningDialog(
+        chatTitle: chatTitle,
+        onConfirm: () => _hideChatForever(chatId),
+      ),
+    );
   }
 
   @override
@@ -809,7 +838,8 @@ class _ChatsScreenState extends State<ChatsScreen>
   void _filterChats() {
     final query = _searchController.text.toLowerCase();
     setState(() {
-      List<Chat> chatsToFilter = _allChats;
+      List<Chat> chatsToFilter =
+          _allChats.where((ch) => !_hiddenChatIds.contains(ch.id)).toList();
 
       if (_selectedFolderId != null) {
         final selectedFolder = _folders.firstWhere(
@@ -4492,6 +4522,7 @@ class _ChatsScreenState extends State<ChatsScreen>
           );
         }
       },
+      onLongPress: () => _showChatContextMenu(chat, title),
       leading: Stack(
         clipBehavior: Clip.none,
         children: [
@@ -4572,6 +4603,54 @@ class _ChatsScreenState extends State<ChatsScreen>
     );
   }
 
+  void _showChatContextMenu(Chat chat, String chatTitle) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => Container(
+        decoration: BoxDecoration(
+          color: Theme.of(context).colorScheme.surface,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        child: SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 36, height: 4,
+                margin: const EdgeInsets.symmetric(vertical: 12),
+                decoration: BoxDecoration(
+                  color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.2),
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                child: Text(
+                  chatTitle,
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              const Divider(),
+              ListTile(
+                leading: const Icon(Icons.visibility_off_rounded),
+                title: const Text('Скрыть чат'),
+                subtitle: const Text('Чат исчезнет навсегда из списка'),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _showHideChatWarning(chat.id, chatTitle);
+                },
+              ),
+              const SizedBox(height: 8),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   void dispose() {
     _apiSubscription?.cancel();
@@ -4584,5 +4663,109 @@ class _ChatsScreenState extends State<ChatsScreen>
     _searchAnimationController.dispose();
     _folderTabController.dispose();
     super.dispose();
+  }
+}
+
+// ─────────────────────────────────────────────────────────────
+// Диалог предупреждения скрытия чата с обратным отсчётом 3 сек
+// ─────────────────────────────────────────────────────────────
+class _HideChatWarningDialog extends StatefulWidget {
+  final String chatTitle;
+  final VoidCallback onConfirm;
+
+  const _HideChatWarningDialog({
+    required this.chatTitle,
+    required this.onConfirm,
+  });
+
+  @override
+  State<_HideChatWarningDialog> createState() => _HideChatWarningDialogState();
+}
+
+class _HideChatWarningDialogState extends State<_HideChatWarningDialog> {
+  int _countdown = 3;
+  Timer? _timer;
+
+  @override
+  void initState() {
+    super.initState();
+    _timer = Timer.periodic(const Duration(seconds: 1), (t) {
+      if (_countdown <= 1) {
+        t.cancel();
+        if (mounted) setState(() => _countdown = 0);
+      } else {
+        if (mounted) setState(() => _countdown--);
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final canConfirm = _countdown == 0;
+
+    return AlertDialog(
+      icon: Icon(
+        Icons.visibility_off_rounded,
+        size: 40,
+        color: theme.colorScheme.error,
+      ),
+      title: const Text('Скрыть чат навсегда?'),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            'Чат "${widget.chatTitle}" исчезнет из списка и больше не будет отображаться.',
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 16),
+          AnimatedSwitcher(
+            duration: const Duration(milliseconds: 300),
+            child: canConfirm
+                ? Text(
+                    'Вы можете подтвердить',
+                    key: const ValueKey('ready'),
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.error,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  )
+                : Text(
+                    'Подождите $_countdown сек...',
+                    key: ValueKey(_countdown),
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.onSurface.withValues(alpha: 0.5),
+                    ),
+                  ),
+          ),
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Отмена'),
+        ),
+        FilledButton(
+          onPressed: canConfirm
+              ? () {
+                  Navigator.pop(context);
+                  widget.onConfirm();
+                }
+              : null,
+          style: FilledButton.styleFrom(
+            backgroundColor: theme.colorScheme.error,
+            foregroundColor: theme.colorScheme.onError,
+            disabledBackgroundColor: theme.colorScheme.error.withValues(alpha: 0.3),
+          ),
+          child: const Text('Скрыть'),
+        ),
+      ],
+    );
   }
 }

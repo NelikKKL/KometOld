@@ -24,6 +24,9 @@ import 'package:gwid/services/message_queue_service.dart';
 import 'package:scrollable_positioned_list/scrollable_positioned_list.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:gwid/screens/group_settings_screen.dart';
+import 'package:gwid/plugins/plugin_service.dart';
+import 'package:gwid/plugins/plugin_model.dart';
+import 'package:gwid/screens/settings/plugin_window_screen.dart';
 import 'package:gwid/screens/edit_contact_screen.dart';
 import 'package:gwid/screens/contact_selection_screen.dart';
 import 'package:gwid/widgets/contact_name_widget.dart';
@@ -2723,6 +2726,71 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 
+  // ─── Плагины: кнопки меню чата ──────────────────────────────
+  List<PopupMenuEntry<String>> _buildPluginMenuItems() {
+    final service = PluginService();
+    final items = service.getChatMenuItems();
+    if (items.isEmpty) return [];
+
+    final result = <PopupMenuEntry<String>>[const PopupMenuDivider()];
+    for (final item in items) {
+      result.add(
+        PopupMenuItem<String>(
+          value: 'plugin:\${item.id}',
+          child: Row(
+            children: [
+              Icon(item.iconData, size: 20),
+              const SizedBox(width: 8),
+              Text(item.label),
+            ],
+          ),
+        ),
+      );
+    }
+    return result;
+  }
+
+  void _handlePluginMenuAction(String value) {
+    // value = 'plugin:<item.id>'
+    final itemId = value.replaceFirst('plugin:', '');
+    final service = PluginService();
+    final items = service.getChatMenuItems();
+    final item = items.firstWhere(
+      (i) => i.id == itemId,
+      orElse: () => throw Exception('Plugin menu item not found: \$itemId'),
+    );
+
+    final action = item.action;
+
+    switch (action.type) {
+      case PluginActionType.openUrl:
+        service.executeAction(action, context);
+        break;
+      case PluginActionType.navigate:
+        // navigate = открыть окно плагина
+        final windowId = action.target;
+        // Ищем окно во всех плагинах
+        final windows = service.getAllWindows();
+        final entry = windows.firstWhere(
+          (e) => e.key.endsWith(':\$windowId') || e.key == windowId,
+          orElse: () => throw Exception('Window not found: \$windowId'),
+        );
+        // Найти имя плагина
+        final pluginId = entry.key.split(':').first;
+        final pluginName = service.plugins
+            .firstWhere((p) => p.id == pluginId, orElse: () => service.plugins.first)
+            .name;
+        PluginWindowScreen.open(
+          context,
+          entry.value,
+          pluginName: pluginName,
+        );
+        break;
+      default:
+        service.executeAction(action, context);
+    }
+  }
+
   void _showBlockDialog() {
     showGeneralDialog(
       context: context,
@@ -4103,6 +4171,8 @@ class _ChatScreenState extends State<ChatScreen> {
                     ),
                   )
                   .then((_) => _loadEncryptionConfig());
+            } else if (value.startsWith('plugin:')) {
+              _handlePluginMenuAction(value);
             } else if (value == 'media') {
               Navigator.of(context).push(
                 MaterialPageRoute(
@@ -4271,6 +4341,8 @@ class _ChatScreenState extends State<ChatScreen> {
                     ],
                   ),
                 ),
+              // ── Кнопки плагинов ───────────────────────────
+              ..._buildPluginMenuItems(),
             ];
           },
         ),
