@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:gwid/plugins/plugin_model.dart';
@@ -13,6 +14,7 @@ class PluginsScreen extends StatefulWidget {
 class _PluginsScreenState extends State<PluginsScreen> {
   final PluginService _pluginService = PluginService();
   bool _isLoading = false;
+  String? _loadingMessage;
 
   @override
   void initState() {
@@ -21,9 +23,12 @@ class _PluginsScreenState extends State<PluginsScreen> {
   }
 
   Future<void> _initPlugins() async {
-    setState(() => _isLoading = true);
+    setState(() {
+      _isLoading = true;
+      _loadingMessage = 'Загрузка плагинов...';
+    });
     await _pluginService.initialize();
-    setState(() => _isLoading = false);
+    if (mounted) setState(() => _isLoading = false);
   }
 
   @override
@@ -32,66 +37,117 @@ class _PluginsScreenState extends State<PluginsScreen> {
     final plugins = _pluginService.plugins;
 
     return Scaffold(
+      backgroundColor: theme.colorScheme.surface,
       appBar: AppBar(
-        title: const Text('Plugins(WIP)'),
+        backgroundColor: theme.colorScheme.surface,
+        surfaceTintColor: Colors.transparent,
+        title: Text(
+          'Плагины',
+          style: theme.textTheme.titleLarge?.copyWith(
+            fontWeight: FontWeight.w700,
+          ),
+        ),
         actions: [
-          IconButton(
-            icon: const Icon(Icons.add),
-            onPressed: _pickPluginFile,
-            tooltip: 'Добавить плагин',
+          Padding(
+            padding: const EdgeInsets.only(right: 8),
+            child: IconButton(
+              style: IconButton.styleFrom(
+                backgroundColor: theme.colorScheme.primaryContainer,
+                foregroundColor: theme.colorScheme.onPrimaryContainer,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+              icon: const Icon(Icons.add_rounded, size: 22),
+              onPressed: _isLoading ? null : _pickPluginFile,
+              tooltip: 'Установить плагин (.kometplugin)',
+            ),
           ),
         ],
       ),
       body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
+          ? _buildLoadingState(theme)
           : plugins.isEmpty
-          ? _buildEmptyState(theme)
-          : _buildPluginList(plugins, theme),
+              ? _buildEmptyState(theme)
+              : _buildPluginList(plugins, theme),
+    );
+  }
+
+  Widget _buildLoadingState(ThemeData theme) {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          const CircularProgressIndicator(),
+          if (_loadingMessage != null) ...[
+            const SizedBox(height: 16),
+            Text(
+              _loadingMessage!,
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
+              ),
+            ),
+          ],
+        ],
+      ),
     );
   }
 
   Widget _buildEmptyState(ThemeData theme) {
     return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(
-            Icons.extension_off,
-            size: 64,
-            color: theme.colorScheme.onSurface.withValues(alpha: 0.3),
-          ),
-          const SizedBox(height: 16),
-          Text(
-            'Нет установленных плагинов',
-            style: theme.textTheme.titleMedium?.copyWith(
-              color: theme.colorScheme.onSurface.withValues(alpha: 0.5),
+      child: Padding(
+        padding: const EdgeInsets.all(32),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Container(
+              width: 96,
+              height: 96,
+              decoration: BoxDecoration(
+                color: theme.colorScheme.surfaceContainerHighest,
+                borderRadius: BorderRadius.circular(24),
+              ),
+              child: Icon(
+                Icons.extension_rounded,
+                size: 48,
+                color: theme.colorScheme.onSurface.withValues(alpha: 0.3),
+              ),
             ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            'Нажмите плюсик чтобы добавить плагин',
-            style: theme.textTheme.bodyMedium?.copyWith(
-              color: theme.colorScheme.onSurface.withValues(alpha: 0.4),
+            const SizedBox(height: 24),
+            Text(
+              'Нет установленных плагинов',
+              style: theme.textTheme.titleMedium?.copyWith(
+                fontWeight: FontWeight.w600,
+              ),
             ),
-          ),
-          const SizedBox(height: 24),
-          FilledButton.icon(
-            onPressed: _pickPluginFile,
-            icon: const Icon(Icons.folder_open),
-            label: const Text('Выбрать файл плагина .kplugin'),
-          ),
-        ],
+            const SizedBox(height: 8),
+            Text(
+              'Нажмите + чтобы выбрать\nфайл плагина .kometplugin',
+              textAlign: TextAlign.center,
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: theme.colorScheme.onSurface.withValues(alpha: 0.5),
+              ),
+            ),
+            const SizedBox(height: 32),
+            FilledButton.icon(
+              onPressed: _pickPluginFile,
+              icon: const Icon(Icons.folder_open_rounded),
+              label: const Text('Выбрать .kometplugin'),
+            ),
+          ],
+        ),
       ),
     );
   }
 
   Widget _buildPluginList(List<KometPlugin> plugins, ThemeData theme) {
-    return ListView.builder(
-      padding: const EdgeInsets.all(16),
+    return ListView.separated(
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
       itemCount: plugins.length,
+      separatorBuilder: (_, __) => const SizedBox(height: 2),
       itemBuilder: (context, index) {
         final plugin = plugins[index];
-        return _PluginCard(
+        return _PluginListTile(
           plugin: plugin,
           onToggle: (enabled) => _togglePlugin(plugin.id, enabled),
           onDelete: () => _deletePlugin(plugin.id),
@@ -105,15 +161,14 @@ class _PluginsScreenState extends State<PluginsScreen> {
     try {
       final result = await FilePicker.platform.pickFiles(
         type: FileType.custom,
-        allowedExtensions: ['kplugin'],
+        allowedExtensions: ['kometplugin'],
         withData: false,
-        withReadStream: false,
       );
 
       if (result != null && result.files.isNotEmpty) {
         final filePath = result.files.first.path;
         if (filePath != null) {
-          await _loadAndPreviewPlugin(filePath);
+          await _installPlugin(filePath);
         }
       }
     } catch (e) {
@@ -121,139 +176,67 @@ class _PluginsScreenState extends State<PluginsScreen> {
     }
   }
 
-  Future<void> _loadAndPreviewPlugin(String filePath) async {
-    setState(() => _isLoading = true);
+  Future<void> _installPlugin(String filePath) async {
+    setState(() {
+      _isLoading = true;
+      _loadingMessage = 'Установка плагина...';
+    });
 
     try {
-      final plugin = await _pluginService.loadPluginFile(filePath);
-
-      if (plugin == null) {
-        _showError('Не удалось загрузить плагин');
-        return;
-      }
+      final result = await _pluginService.installFromFile(filePath);
 
       if (!mounted) return;
 
-      final confirmed = await _showInstallDialog(plugin);
-
-      if (confirmed == true) {
-        await _pluginService.installPlugin(plugin);
-        if (mounted) {
-          setState(() {});
-          _showRestartDialog();
-        }
+      if (!result.success) {
+        _showError(result.errorMessage ?? 'Неизвестная ошибка');
+        return;
       }
+
+      final plugin = result.plugin!;
+
+      // Показываем диалог подтверждения установки
+      final confirmed = await _showInstallDialog(plugin);
+      if (confirmed != true) {
+        // Пользователь отменил — откатываем
+        await _pluginService.uninstallPlugin(plugin.id);
+        return;
+      }
+
+      setState(() {});
+      _showSuccessSnack('Плагин "${plugin.name}" установлен');
     } catch (e) {
-      _showError('Ошибка загрузки плагина: $e');
+      _showError('Ошибка установки: $e');
     } finally {
       if (mounted) {
-        setState(() => _isLoading = false);
+        setState(() {
+          _isLoading = false;
+          _loadingMessage = null;
+        });
       }
     }
   }
 
   Future<bool?> _showInstallDialog(KometPlugin plugin) {
-    final summary = plugin.getSummary();
-
     return showDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: Text('Установить "${plugin.name}"?'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            if (plugin.description != null) ...[
-              Text(plugin.description!),
-              const SizedBox(height: 16),
-            ],
-            if (plugin.author != null)
-              Text(
-                'Автор: ${plugin.author}',
-                style: TextStyle(
-                  color: Theme.of(
-                    context,
-                  ).colorScheme.onSurface.withValues(alpha: 0.6),
-                ),
-              ),
-            Text(
-              'Версия: ${plugin.version}',
-              style: TextStyle(
-                color: Theme.of(
-                  context,
-                ).colorScheme.onSurface.withValues(alpha: 0.6),
-              ),
-            ),
-            if (summary.isNotEmpty) ...[
-              const SizedBox(height: 16),
-              const Divider(),
-              const SizedBox(height: 8),
-              Text(
-                'Этот плагин:',
-                style: Theme.of(context).textTheme.titleSmall,
-              ),
-              const SizedBox(height: 8),
-              ...summary.map(
-                (s) => Padding(
-                  padding: const EdgeInsets.only(bottom: 4),
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text('• '),
-                      Expanded(child: Text(s)),
-                    ],
-                  ),
-                ),
-              ),
-            ],
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Отмена❌❌❌'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('Далее'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _showRestartDialog() {
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) => AlertDialog(
-        icon: const Icon(Icons.restart_alt, size: 48),
-        title: const Text('Требуется перезапуск'),
-        content: const Text(
-          'Для применения изменений перезайдите в приложение.',
-        ),
-        actions: [
-          FilledButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Понятно'),
-          ),
-        ],
-      ),
+      builder: (context) => _InstallDialog(plugin: plugin),
     );
   }
 
   Future<void> _togglePlugin(String pluginId, bool enabled) async {
     await _pluginService.setPluginEnabled(pluginId, enabled);
     setState(() {});
-    _showRestartDialog();
   }
 
   Future<void> _deletePlugin(String pluginId) async {
+    final plugin = _pluginService.plugins.firstWhere((p) => p.id == pluginId);
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Удалить плагин?'),
-        content: const Text('Это действие нельзя отменить'),
+        content: Text(
+          'Плагин "${plugin.name}" будет удалён без возможности восстановления.',
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
@@ -263,6 +246,7 @@ class _PluginsScreenState extends State<PluginsScreen> {
             onPressed: () => Navigator.pop(context, true),
             style: FilledButton.styleFrom(
               backgroundColor: Theme.of(context).colorScheme.error,
+              foregroundColor: Theme.of(context).colorScheme.onError,
             ),
             child: const Text('Удалить'),
           ),
@@ -273,7 +257,6 @@ class _PluginsScreenState extends State<PluginsScreen> {
     if (confirmed == true) {
       await _pluginService.uninstallPlugin(pluginId);
       setState(() {});
-      _showRestartDialog();
     }
   }
 
@@ -281,16 +264,9 @@ class _PluginsScreenState extends State<PluginsScreen> {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      builder: (context) => DraggableScrollableSheet(
-        initialChildSize: 0.6,
-        minChildSize: 0.3,
-        maxChildSize: 0.9,
-        expand: false,
-        builder: (context, scrollController) => _PluginDetailsSheet(
-          plugin: plugin,
-          scrollController: scrollController,
-        ),
-      ),
+      useSafeArea: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => _PluginDetailsSheet(plugin: plugin),
     );
   }
 
@@ -300,18 +276,34 @@ class _PluginsScreenState extends State<PluginsScreen> {
       SnackBar(
         content: Text(message),
         backgroundColor: Theme.of(context).colorScheme.error,
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+  }
+
+  void _showSuccessSnack(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        behavior: SnackBarBehavior.floating,
       ),
     );
   }
 }
 
-class _PluginCard extends StatelessWidget {
+// ─────────────────────────────────────────────────────────────
+// Плитка плагина (как пункт настроек)
+// Вид: | иконка  название |
+//      |     описание     |
+// ─────────────────────────────────────────────────────────────
+class _PluginListTile extends StatelessWidget {
   final KometPlugin plugin;
   final ValueChanged<bool> onToggle;
   final VoidCallback onDelete;
   final VoidCallback onTap;
 
-  const _PluginCard({
+  const _PluginListTile({
     required this.plugin,
     required this.onToggle,
     required this.onDelete,
@@ -322,88 +314,87 @@ class _PluginCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
 
-    return Card(
-      margin: const EdgeInsets.only(bottom: 12),
+    return Material(
+      color: Colors.transparent,
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(12),
+        onLongPress: onDelete,
+        borderRadius: BorderRadius.circular(16),
         child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+          padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 4),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-              Row(
-                children: [
-                  Container(
-                    width: 48,
-                    height: 48,
-                    decoration: BoxDecoration(
-                      color: theme.colorScheme.primaryContainer,
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Icon(
-                      Icons.extension,
-                      color: theme.colorScheme.onPrimaryContainer,
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+              // Иконка плагина
+              _PluginIcon(iconPath: plugin.iconPath, size: 52),
+              const SizedBox(width: 14),
+              // Название + описание
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
                       children: [
-                        Text(
-                          plugin.name,
-                          style: theme.textTheme.titleMedium?.copyWith(
-                            fontWeight: FontWeight.w600,
+                        Expanded(
+                          child: Text(
+                            plugin.name,
+                            style: theme.textTheme.titleSmall?.copyWith(
+                              fontWeight: FontWeight.w600,
+                              color: plugin.isEnabled
+                                  ? theme.colorScheme.onSurface
+                                  : theme.colorScheme.onSurface
+                                      .withValues(alpha: 0.4),
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
                           ),
                         ),
                         Text(
-                          'v${plugin.version}${plugin.author != null ? ' • ${plugin.author}' : ''}',
+                          'v${plugin.version}',
                           style: theme.textTheme.bodySmall?.copyWith(
-                            color: theme.colorScheme.onSurface.withValues(
-                              alpha: 0.6,
-                            ),
+                            color: theme.colorScheme.onSurface
+                                .withValues(alpha: 0.4),
+                            fontSize: 11,
                           ),
                         ),
                       ],
                     ),
-                  ),
-                  Switch(value: plugin.isEnabled, onChanged: onToggle),
-                ],
-              ),
-              if (plugin.description != null) ...[
-                const SizedBox(height: 12),
-                Text(
-                  plugin.description!,
-                  style: theme.textTheme.bodyMedium?.copyWith(
-                    color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
-                  ),
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
+                    if (plugin.description != null &&
+                        plugin.description!.isNotEmpty) ...[
+                      const SizedBox(height: 2),
+                      Text(
+                        plugin.description!,
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: theme.colorScheme.onSurface
+                              .withValues(alpha: 0.55),
+                        ),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ] else ...[
+                      const SizedBox(height: 2),
+                      Text(
+                        plugin.author != null
+                            ? 'Автор: ${plugin.author}'
+                            : 'Нет описания',
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: theme.colorScheme.onSurface
+                              .withValues(alpha: 0.4),
+                          fontStyle: FontStyle.italic,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
+                  ],
                 ),
-              ],
-              const SizedBox(height: 12),
-              Row(
-                children: [
-                  if (plugin.settingsSections.isNotEmpty)
-                    _buildBadge(
-                      context,
-                      Icons.tune,
-                      '${plugin.settingsSections.length} разделов',
-                    ),
-                  if (plugin.replaceScreens.isNotEmpty)
-                    _buildBadge(
-                      context,
-                      Icons.swap_horiz,
-                      '${plugin.replaceScreens.length} экранов',
-                    ),
-                  const Spacer(),
-                  IconButton(
-                    icon: const Icon(Icons.delete_outline),
-                    onPressed: onDelete,
-                    tooltip: 'Удалить',
-                  ),
-                ],
+              ),
+              const SizedBox(width: 8),
+              // Переключатель
+              Switch(
+                value: plugin.isEnabled,
+                onChanged: onToggle,
+                materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
               ),
             ],
           ),
@@ -411,102 +402,314 @@ class _PluginCard extends StatelessWidget {
       ),
     );
   }
+}
 
-  Widget _buildBadge(BuildContext context, IconData icon, String text) {
+// ─────────────────────────────────────────────────────────────
+// Иконка плагина
+// ─────────────────────────────────────────────────────────────
+class _PluginIcon extends StatelessWidget {
+  final String? iconPath;
+  final double size;
+
+  const _PluginIcon({this.iconPath, required this.size});
+
+  @override
+  Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final radius = BorderRadius.circular(size * 0.22);
+
+    if (iconPath != null) {
+      final file = File(iconPath!);
+      return ClipRRect(
+        borderRadius: radius,
+        child: Image.file(
+          file,
+          width: size,
+          height: size,
+          fit: BoxFit.cover,
+          errorBuilder: (_, __, ___) => _fallback(theme, radius),
+        ),
+      );
+    }
+    return _fallback(theme, radius);
+  }
+
+  Widget _fallback(ThemeData theme, BorderRadius radius) {
     return Container(
-      margin: const EdgeInsets.only(right: 8),
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      width: size,
+      height: size,
       decoration: BoxDecoration(
-        color: theme.colorScheme.surfaceContainerHighest,
-        borderRadius: BorderRadius.circular(8),
+        color: theme.colorScheme.primaryContainer,
+        borderRadius: radius,
       ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(
-            icon,
-            size: 14,
-            color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
-          ),
-          const SizedBox(width: 4),
-          Text(
-            text,
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
-            ),
-          ),
-        ],
+      child: Icon(
+        Icons.extension_rounded,
+        size: size * 0.5,
+        color: theme.colorScheme.onPrimaryContainer,
       ),
     );
   }
 }
 
-class _PluginDetailsSheet extends StatelessWidget {
+// ─────────────────────────────────────────────────────────────
+// Диалог подтверждения установки
+// ─────────────────────────────────────────────────────────────
+class _InstallDialog extends StatelessWidget {
   final KometPlugin plugin;
-  final ScrollController scrollController;
 
-  const _PluginDetailsSheet({
-    required this.plugin,
-    required this.scrollController,
-  });
+  const _InstallDialog({required this.plugin});
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final summary = plugin.getSummary();
 
-    return Container(
-      decoration: BoxDecoration(
-        color: theme.colorScheme.surface,
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+    return AlertDialog(
+      title: Text('Установить плагин?'),
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Шапка с иконкой и именем
+            Row(
+              children: [
+                _PluginIcon(iconPath: plugin.iconPath, size: 56),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        plugin.name,
+                        style: theme.textTheme.titleMedium?.copyWith(
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      Text(
+                        [
+                          'v${plugin.version}',
+                          if (plugin.author != null) plugin.author!,
+                        ].join(' • '),
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: theme.colorScheme.onSurface
+                              .withValues(alpha: 0.6),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            if (plugin.description != null &&
+                plugin.description!.isNotEmpty) ...[
+              const SizedBox(height: 14),
+              Text(plugin.description!, style: theme.textTheme.bodyMedium),
+            ],
+            if (summary.isNotEmpty) ...[
+              const SizedBox(height: 14),
+              const Divider(),
+              const SizedBox(height: 8),
+              Text(
+                'Этот плагин:',
+                style: theme.textTheme.labelMedium?.copyWith(
+                  color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
+                ),
+              ),
+              const SizedBox(height: 6),
+              ...summary.map(
+                (s) => Padding(
+                  padding: const EdgeInsets.only(bottom: 4),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Icon(
+                        Icons.check_circle_outline_rounded,
+                        size: 16,
+                        color: theme.colorScheme.primary,
+                      ),
+                      const SizedBox(width: 6),
+                      Expanded(
+                        child: Text(s, style: theme.textTheme.bodySmall),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ],
+        ),
       ),
-      child: ListView(
-        controller: scrollController,
-        padding: const EdgeInsets.all(24),
-        children: [
-          Center(
-            child: Container(
-              width: 40,
-              height: 4,
-              margin: const EdgeInsets.only(bottom: 24),
-              decoration: BoxDecoration(
-                color: theme.colorScheme.onSurface.withValues(alpha: 0.2),
-                borderRadius: BorderRadius.circular(2),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context, false),
+          child: const Text('Отмена'),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.pop(context, true),
+          child: const Text('Установить'),
+        ),
+      ],
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────
+// Bottom sheet с деталями плагина
+// ─────────────────────────────────────────────────────────────
+class _PluginDetailsSheet extends StatelessWidget {
+  final KometPlugin plugin;
+
+  const _PluginDetailsSheet({required this.plugin});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final summary = plugin.getSummary();
+
+    return DraggableScrollableSheet(
+      initialChildSize: 0.55,
+      minChildSize: 0.3,
+      maxChildSize: 0.9,
+      expand: false,
+      builder: (context, scrollController) => Container(
+        decoration: BoxDecoration(
+          color: theme.colorScheme.surface,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+        ),
+        child: ListView(
+          controller: scrollController,
+          padding: const EdgeInsets.fromLTRB(24, 12, 24, 32),
+          children: [
+            // Ручка
+            Center(
+              child: Container(
+                width: 36,
+                height: 4,
+                margin: const EdgeInsets.only(bottom: 20),
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.onSurface.withValues(alpha: 0.2),
+                  borderRadius: BorderRadius.circular(2),
+                ),
               ),
             ),
-          ),
-          Row(
-            children: [
-              Container(
-                width: 64,
-                height: 64,
-                decoration: BoxDecoration(
-                  color: theme.colorScheme.primaryContainer,
-                  borderRadius: BorderRadius.circular(16),
+            // Шапка
+            Row(
+              children: [
+                _PluginIcon(iconPath: plugin.iconPath, size: 68),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        plugin.name,
+                        style: theme.textTheme.headlineSmall?.copyWith(
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        'Версия ${plugin.version}',
+                        style: theme.textTheme.bodyMedium?.copyWith(
+                          color: theme.colorScheme.onSurface
+                              .withValues(alpha: 0.55),
+                        ),
+                      ),
+                      if (plugin.author != null) ...[
+                        const SizedBox(height: 2),
+                        Row(
+                          children: [
+                            Icon(
+                              Icons.person_outline_rounded,
+                              size: 14,
+                              color: theme.colorScheme.onSurface
+                                  .withValues(alpha: 0.5),
+                            ),
+                            const SizedBox(width: 4),
+                            Text(
+                              plugin.author!,
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                color: theme.colorScheme.onSurface
+                                    .withValues(alpha: 0.55),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ],
+                  ),
                 ),
-                child: Icon(
-                  Icons.extension,
-                  size: 32,
-                  color: theme.colorScheme.onPrimaryContainer,
+              ],
+            ),
+            const SizedBox(height: 20),
+            if (plugin.description != null &&
+                plugin.description!.isNotEmpty) ...[
+              Text(
+                plugin.description!,
+                style: theme.textTheme.bodyLarge,
+              ),
+              const SizedBox(height: 20),
+            ],
+            const Divider(),
+            const SizedBox(height: 12),
+            Text(
+              'Возможности',
+              style: theme.textTheme.titleSmall?.copyWith(
+                fontWeight: FontWeight.w600,
+                color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
+                letterSpacing: 0.5,
+              ),
+            ),
+            const SizedBox(height: 10),
+            if (summary.isEmpty)
+              Text(
+                'Плагин не добавляет дополнительных функций',
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: theme.colorScheme.onSurface.withValues(alpha: 0.45),
+                  fontStyle: FontStyle.italic,
+                ),
+              )
+            else
+              ...summary.map(
+                (s) => Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Icon(
+                        Icons.check_circle_rounded,
+                        size: 18,
+                        color: theme.colorScheme.primary,
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(child: Text(s)),
+                    ],
+                  ),
                 ),
               ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+            if (plugin.scriptPath != null) ...[
+              const SizedBox(height: 16),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.secondaryContainer
+                      .withValues(alpha: 0.4),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Row(
                   children: [
-                    Text(
-                      plugin.name,
-                      style: theme.textTheme.headlineSmall?.copyWith(
-                        fontWeight: FontWeight.bold,
-                      ),
+                    Icon(
+                      Icons.code_rounded,
+                      size: 18,
+                      color: theme.colorScheme.secondary,
                     ),
-                    Text(
-                      'Версия ${plugin.version}',
-                      style: theme.textTheme.bodyMedium?.copyWith(
-                        color: theme.colorScheme.onSurface.withValues(
-                          alpha: 0.6,
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        'Содержит JavaScript (script.js)',
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: theme.colorScheme.onSecondaryContainer,
                         ),
                       ),
                     ),
@@ -514,116 +717,48 @@ class _PluginDetailsSheet extends StatelessWidget {
                 ),
               ),
             ],
-          ),
-          if (plugin.author != null) ...[
-            const SizedBox(height: 16),
-            _buildInfoRow(context, Icons.person, 'Автор', plugin.author!),
-          ],
-          if (plugin.description != null) ...[
-            const SizedBox(height: 16),
-            Text(plugin.description!, style: theme.textTheme.bodyLarge),
-          ],
-          const SizedBox(height: 24),
-          const Divider(),
-          const SizedBox(height: 16),
-          Text(
-            'Возможности плагина',
-            style: theme.textTheme.titleMedium?.copyWith(
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-          const SizedBox(height: 12),
-          if (summary.isEmpty)
-            Text(
-              'Плагин хуетень ниче не делает ',
-              style: theme.textTheme.bodyMedium?.copyWith(
-                color: theme.colorScheme.onSurface.withValues(alpha: 0.5),
-              ),
-            )
-          else
-            ...summary.map(
-              (s) => Padding(
-                padding: const EdgeInsets.only(bottom: 8),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Icon(
-                      Icons.check_circle,
-                      size: 20,
-                      color: theme.colorScheme.primary,
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(child: Text(s)),
-                  ],
+            if (plugin.overrideConstants.isNotEmpty) ...[
+              const SizedBox(height: 16),
+              const Divider(),
+              const SizedBox(height: 12),
+              Text(
+                'Переопределяемые константы',
+                style: theme.textTheme.titleSmall?.copyWith(
+                  fontWeight: FontWeight.w600,
+                  color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
+                  letterSpacing: 0.5,
                 ),
               ),
-            ),
-          if (plugin.overrideConstants.isNotEmpty) ...[
-            const SizedBox(height: 24),
-            const Divider(),
-            const SizedBox(height: 16),
-            Text(
-              'Изменяемые значения',
-              style: theme.textTheme.titleMedium?.copyWith(
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-            const SizedBox(height: 12),
-            ...plugin.overrideConstants.entries.map(
-              (e) => Padding(
-                padding: const EdgeInsets.only(bottom: 4),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: Text(
-                        e.key,
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          fontFamily: 'monospace',
-                          color: theme.colorScheme.onSurface.withValues(
-                            alpha: 0.7,
+              const SizedBox(height: 8),
+              ...plugin.overrideConstants.entries.map(
+                (e) => Padding(
+                  padding: const EdgeInsets.only(bottom: 4),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          e.key,
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            fontFamily: 'monospace',
+                            color: theme.colorScheme.onSurface
+                                .withValues(alpha: 0.6),
                           ),
                         ),
                       ),
-                    ),
-                    Text(
-                      '${e.value}',
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        fontWeight: FontWeight.w600,
+                      Text(
+                        '${e.value}',
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          fontWeight: FontWeight.w600,
+                        ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
-            ),
+            ],
           ],
-        ],
+        ),
       ),
-    );
-  }
-
-  Widget _buildInfoRow(
-    BuildContext context,
-    IconData icon,
-    String label,
-    String value,
-  ) {
-    final theme = Theme.of(context);
-    return Row(
-      children: [
-        Icon(
-          icon,
-          size: 20,
-          color: theme.colorScheme.onSurface.withValues(alpha: 0.5),
-        ),
-        const SizedBox(width: 8),
-        Text(
-          '$label: ',
-          style: theme.textTheme.bodyMedium?.copyWith(
-            color: theme.colorScheme.onSurface.withValues(alpha: 0.5),
-          ),
-        ),
-        Text(value, style: theme.textTheme.bodyMedium),
-      ],
     );
   }
 }

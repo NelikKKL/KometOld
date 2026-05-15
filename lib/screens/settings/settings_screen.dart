@@ -15,7 +15,7 @@ import 'package:gwid/screens/debug_screen.dart';
 import 'package:gwid/screens/settings/komet_misc_screen.dart';
 import 'package:gwid/screens/settings/special_settings_screen.dart';
 import 'package:gwid/screens/settings/optimization_screen.dart';
-// import 'package:gwid/screens/settings/plugins_screen.dart';
+import 'package:gwid/screens/settings/plugins_screen.dart';
 import 'package:gwid/screens/settings/plugin_section_screen.dart';
 import 'package:gwid/plugins/plugin_service.dart';
 import 'package:gwid/utils/theme_provider.dart';
@@ -509,13 +509,13 @@ class _SettingsScreenState extends State<SettingsScreen>
         subtitle: "Команда, соглашение",
         screen: const AboutScreen(),
       ),
-      // _SettingsItem(
-      //   type: _SettingsItemType.category,
-      //   icon: Icons.extension,
-      //   title: "Plugins(WIP)",
-      //   subtitle: "Плагины(WIP)",
-      //   screen: const PluginsScreen(),
-      // ),
+      _SettingsItem(
+        type: _SettingsItemType.category,
+        icon: Icons.extension_rounded,
+        title: "Плагины",
+        subtitle: "Управление плагинами (.kometplugin)",
+        screen: const PluginsScreen(),
+      ),
     ];
 
     final pluginSections = PluginService().getAllPluginSections();
@@ -525,7 +525,7 @@ class _SettingsScreenState extends State<SettingsScreen>
           type: _SettingsItemType.category,
           icon: Icons.extension,
           title: section.title,
-          subtitle: "Плагины(WIP)",
+          subtitle: "Раздел плагина",
           screen: PluginSectionScreen(section: section),
         ),
       );
