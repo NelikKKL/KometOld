@@ -11,12 +11,12 @@ repository: https://github.com/KometTeam/Komet
 publish_to: none
 
 environment:
-  # Поддерживаются версии Dart SDK от 3.10 до 4.0.
+  # Поддерживаются версии Dart SDK от 3.8 до 4.0.
   # Рекомендуется обновлять только минорную компоненту версии.
-  sdk: ^3.10.0
+  sdk: ^3.8.0
 
-  # Поддерживаются версии Flutter от 3.38.
-  flutter: ">=3.38.0"
+  # Поддерживаются версии Flutter от 3.24.
+  flutter: ">=3.24.0"
 
 dependencies:
   # SDK зависимости
