@@ -18,17 +18,18 @@ on:
       - 'pubspec.yaml'
       - '.github/workflows/build-android.yml'
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 jobs:
   build-android:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-    defaults:
-      run:
-        working-directory: .
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
 
       - name: Setup Java
         uses: actions/setup-java@v4
@@ -39,74 +40,71 @@ jobs:
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.41.9'
+          flutter-version: '3.32.2'
           channel: 'stable'
+          cache: true
+
+      - name: Flutter doctor
+        run: flutter doctor -v
 
       - name: Get dependencies
         run: flutter pub get
 
-      - name: Configure Gradle
+      - name: Configure Gradle memory
         run: |
           mkdir -p ~/.gradle
           echo "org.gradle.jvmargs=-Xmx4096m -XX:MaxMetaspaceSize=1024m" >> ~/.gradle/gradle.properties
           echo "kotlin.daemon.jvmargs=-Xmx1536m" >> ~/.gradle/gradle.properties
 
-      - name: Build APK (debug)
-        run: flutter build apk --debug 2>&1 | tee build_apk.log
-        continue-on-error: true
+      - name: Build debug APK
         id: build_apk
+        run: |
+          set -o pipefail
+          flutter build apk --debug 2>&1 | tee build_apk.log
+          echo "apk_path=$(find build/app/outputs/flutter-apk -name '*.apk' | head -1)" >> $GITHUB_OUTPUT
 
-      # ── Артефакты при успехе ──────────────────────────────────────────────
-
-      - name: Upload APK artifact
-        if: steps.build_apk.outcome == 'success'
+      - name: Upload APK
+        if: success()
         uses: actions/upload-artifact@v4
         with:
           name: komet-android-debug
           path: build/app/outputs/flutter-apk/app-debug.apk
           retention-days: 30
+          if-no-files-found: error
 
-      # ── Сбор логов при ошибке ─────────────────────────────────────────────
+      # ── При ошибке — собираем и заливаем логи ──────────────────────────
 
       - name: Collect error logs
-        if: failure() || steps.build_apk.outcome == 'failure'
+        if: failure()
         run: |
           mkdir -p error_logs
 
-          # Логи сборки Flutter
           [ -f build_apk.log ] && cp build_apk.log error_logs/ || true
-          [ -f build_aab.log ] && cp build_aab.log error_logs/ || true
 
-          # Gradle логи
-          find . -path "*/build/reports" -type d | while read d; do
+          # Gradle build reports
+          find . -path "*/build/reports" -type d 2>/dev/null | while read d; do
             cp -r "$d" error_logs/gradle_reports 2>/dev/null || true
           done
 
-          # Последний Gradle build scan (если есть)
-          find ~/.gradle -name "*.log" 2>/dev/null | head -5 | while read f; do
+          # Gradle logs
+          find ~/.gradle -name "*.log" 2>/dev/null | head -10 | while read f; do
             cp "$f" error_logs/ 2>/dev/null || true
           done
 
-          # flutter doctor для диагностики окружения
-          flutter doctor -v > error_logs/flutter_doctor.txt 2>&1 || true
-
-          # pubspec.lock для проверки зависимостей
+          # pubspec.lock
           [ -f pubspec.lock ] && cp pubspec.lock error_logs/ || true
 
-          echo "=== Files in error_logs ===" && ls -lh error_logs/
+          # Список файлов проекта для диагностики
+          ls -la > error_logs/project_root.txt 2>&1 || true
+          find . -name "pubspec.yaml" 2>/dev/null >> error_logs/project_root.txt || true
+
+          echo "=== error_logs contents ===" && ls -lh error_logs/
 
       - name: Upload error logs
-        if: failure() || steps.build_apk.outcome == 'failure'
+        if: failure()
         uses: actions/upload-artifact@v4
         with:
           name: android-build-error-logs
           path: error_logs/
           retention-days: 7
-
-      # ── Завершаем с ошибкой если сборка упала ────────────────────────────
-
-      - name: Fail if build failed
-        if: steps.build_apk.outcome == 'failure'
-        run: |
-          echo "❌ Android build failed. Download 'android-build-error-logs' artifact for details."
-          exit 1
+          if-no-files-found: warn
