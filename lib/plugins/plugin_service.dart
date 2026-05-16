@@ -331,35 +331,6 @@ class PluginService {
     return null;
   }
 
-  // ─── Кнопки плагинов в меню чата ─────────────────────────────
-  List<PluginChatMenuItem> getChatMenuItems() {
-    final items = <PluginChatMenuItem>[];
-    for (final plugin in enabledPlugins) {
-      items.addAll(plugin.chatMenuItems);
-    }
-    return items;
-  }
-
-  // ─── Окна плагинов ─────────────────────────────────────────
-  PluginWindowDef? getWindow(String windowId) {
-    for (final plugin in enabledPlugins) {
-      if (plugin.windows.containsKey(windowId)) {
-        return plugin.windows[windowId];
-      }
-    }
-    return null;
-  }
-
-  List<MapEntry<String, PluginWindowDef>> getAllWindows() {
-    final result = <MapEntry<String, PluginWindowDef>>[];
-    for (final plugin in enabledPlugins) {
-      for (final e in plugin.windows.entries) {
-        result.add(MapEntry('\${plugin.id}:\${e.key}', e.value));
-      }
-    }
-    return result;
-  }
-
   bool isScreenReplaced(String screenId) {
     if (screenId == 'PluginsScreen') return false;
     return enabledPlugins.any((p) => p.replaceScreens.containsKey(screenId));
@@ -429,37 +400,4 @@ class KometPluginInstallResult {
 
   factory KometPluginInstallResult.error(String message) =>
       KometPluginInstallResult._(success: false, errorMessage: message);
-}
-
-// ─────────────────────────────────────────────────────────────
-// Расширения меню ··· в чате от плагинов
-// ─────────────────────────────────────────────────────────────
-
-class PluginChatMenuItem {
-  final String pluginId;
-  final String id;
-  final String label;
-  final String? icon;
-  final PluginAction action;
-
-  PluginChatMenuItem({
-    required this.pluginId,
-    required this.id,
-    required this.label,
-    this.icon,
-    required this.action,
-  });
-
-  factory PluginChatMenuItem.fromJson(
-    Map<String, dynamic> json,
-    String pluginId,
-  ) {
-    return PluginChatMenuItem(
-      pluginId: pluginId,
-      id: json['id'] ?? '',
-      label: json['label'] ?? '',
-      icon: json['icon'],
-      action: PluginAction.fromJson(json['action'] ?? {}),
-    );
-  }
 }

@@ -147,61 +147,14 @@ class _PluginsScreenState extends State<PluginsScreen> {
       separatorBuilder: (_, __) => const SizedBox(height: 2),
       itemBuilder: (context, index) {
         final plugin = plugins[index];
-        return Dismissible(
-          key: ValueKey(plugin.id),
-          direction: DismissDirection.endToStart,
-          confirmDismiss: (_) async {
-            return await _confirmDelete(plugin);
-          },
-          onDismissed: (_) => _deletePlugin(plugin.id),
-          background: Container(
-            alignment: Alignment.centerRight,
-            padding: const EdgeInsets.only(right: 20),
-            decoration: BoxDecoration(
-              color: Theme.of(context).colorScheme.errorContainer,
-              borderRadius: BorderRadius.circular(16),
-            ),
-            child: Icon(
-              Icons.delete_rounded,
-              color: Theme.of(context).colorScheme.onErrorContainer,
-            ),
-          ),
-          child: _PluginListTile(
-            plugin: plugin,
-            onToggle: (enabled) => _togglePlugin(plugin.id, enabled),
-            onDelete: () => _deletePlugin(plugin.id),
-            onTap: () => _showPluginDetails(plugin),
-          ),
+        return _PluginListTile(
+          plugin: plugin,
+          onToggle: (enabled) => _togglePlugin(plugin.id, enabled),
+          onDelete: () => _deletePlugin(plugin.id),
+          onTap: () => _showPluginDetails(plugin),
         );
       },
     );
-  }
-
-  Future<bool> _confirmDelete(KometPlugin plugin) async {
-    return await showDialog<bool>(
-          context: context,
-          builder: (context) => AlertDialog(
-            title: const Text('Удалить плагин?'),
-            content: Text(
-              'Плагин "\${plugin.name}" будет удалён без возможности восстановления.',
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context, false),
-                child: const Text('Отмена'),
-              ),
-              FilledButton(
-                onPressed: () => Navigator.pop(context, true),
-                style: FilledButton.styleFrom(
-                  backgroundColor: Theme.of(context).colorScheme.error,
-                  foregroundColor: Theme.of(context).colorScheme.onError,
-                ),
-                child: const Text('Удалить'),
-              ),
-            ],
-          ),
-        ) ??
-        false;
   }
 
   Future<void> _pickPluginFile() async {

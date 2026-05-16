@@ -19,12 +19,6 @@ class KometPlugin {
   final List<PluginSubsection> settingsSubsections;
   final Map<String, PluginScreen> replaceScreens;
 
-  /// Кнопки добавляемые в меню ··· чата
-  final List<PluginChatMenuItem> chatMenuItems;
-
-  /// Окна (экраны) которые плагин может открывать
-  final Map<String, PluginWindowDef> windows;
-
   bool isEnabled;
 
   KometPlugin({
@@ -40,8 +34,6 @@ class KometPlugin {
     this.settingsSections = const [],
     this.settingsSubsections = const [],
     this.replaceScreens = const {},
-    this.chatMenuItems = const [],
-    this.windows = const {},
     this.isEnabled = true,
   });
 
@@ -78,16 +70,6 @@ class KometPlugin {
             (k, v) => MapEntry(k, PluginScreen.fromJson(v)),
           ) ??
           {},
-      chatMenuItems:
-          (json['chatMenuItems'] as List?)
-              ?.map((e) => PluginChatMenuItem.fromJson(e))
-              .toList() ??
-          [],
-      windows:
-          (json['windows'] as Map<String, dynamic>?)?.map(
-            (k, v) => MapEntry(k, PluginWindowDef.fromJson(v)),
-          ) ??
-          {},
       isEnabled: json['isEnabled'] ?? true,
     );
   }
@@ -105,8 +87,6 @@ class KometPlugin {
     'settingsSections': settingsSections.map((e) => e.toJson()).toList(),
     'settingsSubsections': settingsSubsections.map((e) => e.toJson()).toList(),
     'replaceScreens': replaceScreens.map((k, v) => MapEntry(k, v.toJson())),
-    'chatMenuItems': chatMenuItems.map((e) => e.toJson()).toList(),
-    'windows': windows.map((k, v) => MapEntry(k, v.toJson())),
     'isEnabled': isEnabled,
   };
 
@@ -319,85 +299,5 @@ class PluginScreenWidget {
     'type': type.name, 'properties': properties,
     'children': children?.map((e) => e.toJson()).toList(),
     'onTap': onTap?.toJson(),
-  };
-}
-
-// ─────────────────────────────────────────────────────────────
-// Кнопка плагина в меню ··· чата
-// ─────────────────────────────────────────────────────────────
-class PluginChatMenuItem {
-  final String id;
-  final String label;
-  final String? iconName; // имя иконки из Icons.*
-  final PluginAction action;
-
-  PluginChatMenuItem({
-    required this.id,
-    required this.label,
-    this.iconName,
-    required this.action,
-  });
-
-  factory PluginChatMenuItem.fromJson(Map<String, dynamic> json) {
-    return PluginChatMenuItem(
-      id: json['id'] ?? '',
-      label: json['label'] ?? '',
-      iconName: json['icon'],
-      action: PluginAction.fromJson(json['action'] ?? {}),
-    );
-  }
-
-  Map<String, dynamic> toJson() => {
-    'id': id,
-    'label': label,
-    'icon': iconName,
-    'action': action.toJson(),
-  };
-
-  IconData get iconData {
-    switch (iconName) {
-      case 'star': return Icons.star;
-      case 'bookmark': return Icons.bookmark;
-      case 'copy': return Icons.copy;
-      case 'share': return Icons.share;
-      case 'info': return Icons.info_outline;
-      case 'settings': return Icons.settings;
-      case 'translate': return Icons.translate;
-      case 'summarize': return Icons.summarize;
-      case 'code': return Icons.code;
-      default: return Icons.extension;
-    }
-  }
-}
-
-// ─────────────────────────────────────────────────────────────
-// Определение окна плагина
-// ─────────────────────────────────────────────────────────────
-class PluginWindowDef {
-  final String title;
-  final List<PluginScreenWidget> widgets;
-  final bool fullScreen;
-
-  PluginWindowDef({
-    required this.title,
-    this.widgets = const [],
-    this.fullScreen = false,
-  });
-
-  factory PluginWindowDef.fromJson(Map<String, dynamic> json) {
-    return PluginWindowDef(
-      title: json['title'] ?? '',
-      widgets: (json['widgets'] as List?)
-              ?.map((e) => PluginScreenWidget.fromJson(e))
-              .toList() ??
-          [],
-      fullScreen: json['fullScreen'] ?? false,
-    );
-  }
-
-  Map<String, dynamic> toJson() => {
-    'title': title,
-    'widgets': widgets.map((e) => e.toJson()).toList(),
-    'fullScreen': fullScreen,
   };
 }
