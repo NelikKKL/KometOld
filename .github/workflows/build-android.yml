@@ -39,8 +39,9 @@ jobs:
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.41.9'
+          flutter-version: '3.32.2'
           channel: 'stable'
+          cache: true
 
       - name: Get dependencies
         run: flutter pub get
@@ -50,6 +51,44 @@ jobs:
           mkdir -p ~/.gradle
           echo "org.gradle.jvmargs=-Xmx4096m -XX:MaxMetaspaceSize=1024m" >> ~/.gradle/gradle.properties
           echo "kotlin.daemon.jvmargs=-Xmx1536m" >> ~/.gradle/gradle.properties
+
+      # ── Подпись: используем release-ключ если есть секреты, иначе debug ──
+
+      - name: Setup release keystore (if secrets set)
+        id: keystore
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+        run: |
+          if [ -n "$KEYSTORE_BASE64" ]; then
+            echo "$KEYSTORE_BASE64" | base64 -d > android/app/release.jks
+            echo "HAS_KEYSTORE=true" >> $GITHUB_OUTPUT
+          else
+            echo "HAS_KEYSTORE=false" >> $GITHUB_OUTPUT
+            echo "⚠️  No KEYSTORE_BASE64 secret found — building with debug signing"
+          fi
+
+      - name: Write key.properties (release signing)
+        if: steps.keystore.outputs.HAS_KEYSTORE == 'true'
+        env:
+          STORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          cat > android/key.properties <<EOF
+          storeFile=../app/release.jks
+          storePassword=$STORE_PASSWORD
+          keyAlias=$KEY_ALIAS
+          keyPassword=$KEY_PASSWORD
+          EOF
+
+      # Если нет release-ключа — переключаем buildType на debug-signing в release
+      - name: Patch build.gradle for debug signing fallback
+        if: steps.keystore.outputs.HAS_KEYSTORE == 'false'
+        run: |
+          # Добавляем signingConfig = signingConfigs.getByName("debug") в release buildType
+          # используя sed — патчим только если нет keystore
+          sed -i 's/getByName("release") {/getByName("release") {\n            signingConfig = signingConfigs.getByName("debug")/' \
+            android/app/build.gradle.kts
 
       - name: Build APK (release)
         run: flutter build apk --release 2>&1 | tee build_apk.log
@@ -87,24 +126,18 @@ jobs:
         run: |
           mkdir -p error_logs
 
-          # Логи сборки Flutter
           [ -f build_apk.log ] && cp build_apk.log error_logs/ || true
           [ -f build_aab.log ] && cp build_aab.log error_logs/ || true
 
-          # Gradle логи
           find . -path "*/build/reports" -type d | while read d; do
             cp -r "$d" error_logs/gradle_reports 2>/dev/null || true
           done
 
-          # Последний Gradle build scan (если есть)
           find ~/.gradle -name "*.log" 2>/dev/null | head -5 | while read f; do
             cp "$f" error_logs/ 2>/dev/null || true
           done
 
-          # flutter doctor для диагностики окружения
           flutter doctor -v > error_logs/flutter_doctor.txt 2>&1 || true
-
-          # pubspec.lock для проверки зависимостей
           [ -f pubspec.lock ] && cp pubspec.lock error_logs/ || true
 
           echo "=== Files in error_logs ===" && ls -lh error_logs/
@@ -116,8 +149,6 @@ jobs:
           name: android-build-error-logs
           path: error_logs/
           retention-days: 7
-
-      # ── Завершаем с ошибкой если сборка упала ────────────────────────────
 
       - name: Fail if build failed
         if: steps.build_apk.outcome == 'failure'
