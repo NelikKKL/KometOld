@@ -878,7 +878,184 @@ class _ChatScreenState extends State<ChatScreen> {
                 });
               },
             ),
+            const SizedBox(height: 8),
+            _SpecialMessageButton(
+              label: '3D модель (komet.omm)',
+              template: "komet.omm'cube3\ncolor(255,100,50)\n'",
+              icon: Icons.view_in_ar,
+              onTap: () {
+                Navigator.pop(context);
+                Future.microtask(() {
+                  if (!mounted) return;
+                  _showOmmInsertDialog();
+                });
+              },
+            ),
             const SizedBox(height: 16),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showOmmInsertDialog() {
+    Color selectedColor = Colors.orange;
+    String selectedShape = 'cube';
+    final shapeOptions = ['cube', 'sphere', 'pyramid', 'cylinder', 'triangle'];
+    final shapeLabels = {
+      'cube': 'Куб',
+      'sphere': 'Сфера',
+      'pyramid': 'Пирамида',
+      'cylinder': 'Цилиндр',
+      'triangle': 'Треугольник',
+    };
+
+    showDialog(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setStateDialog) => AlertDialog(
+          title: const Row(
+            children: [
+              Icon(Icons.view_in_ar),
+              SizedBox(width: 8),
+              Text('Вставить komet.omm'),
+            ],
+          ),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('Форма:', style: TextStyle(fontWeight: FontWeight.w600)),
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: shapeOptions.map((shape) {
+                    final isSelected = selectedShape == shape;
+                    return GestureDetector(
+                      onTap: () => setStateDialog(() => selectedShape = shape),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                        decoration: BoxDecoration(
+                          color: isSelected
+                              ? Theme.of(context).colorScheme.primary
+                              : Theme.of(context).colorScheme.surfaceContainerHighest,
+                          borderRadius: BorderRadius.circular(20),
+                          border: Border.all(
+                            color: isSelected
+                                ? Theme.of(context).colorScheme.primary
+                                : Theme.of(context).colorScheme.outline.withValues(alpha: 0.3),
+                          ),
+                        ),
+                        child: Text(
+                          shapeLabels[shape]!,
+                          style: TextStyle(
+                            color: isSelected
+                                ? Theme.of(context).colorScheme.onPrimary
+                                : Theme.of(context).colorScheme.onSurface,
+                            fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                          ),
+                        ),
+                      ),
+                    );
+                  }).toList(),
+                ),
+                const SizedBox(height: 16),
+                const Text('Цвет:', style: TextStyle(fontWeight: FontWeight.w600)),
+                const SizedBox(height: 8),
+                GestureDetector(
+                  onTap: () {
+                    Color pickedColor = selectedColor;
+                    showDialog(
+                      context: context,
+                      builder: (colorCtx) => AlertDialog(
+                        title: const Text('Выберите цвет'),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                        content: SingleChildScrollView(
+                          child: StatefulBuilder(
+                            builder: (context, setColorState) => ColorPicker(
+                              pickerColor: pickedColor,
+                              onColorChanged: (c) => setColorState(() => pickedColor = c),
+                              enableAlpha: false,
+                              pickerAreaHeightPercent: 0.8,
+                            ),
+                          ),
+                        ),
+                        actions: [
+                          TextButton(
+                            onPressed: () => Navigator.pop(colorCtx),
+                            child: const Text('Отмена'),
+                          ),
+                          TextButton(
+                            onPressed: () {
+                              setStateDialog(() => selectedColor = pickedColor);
+                              Navigator.pop(colorCtx);
+                            },
+                            child: const Text('Готово'),
+                          ),
+                        ],
+                      ),
+                    );
+                  },
+                  child: Row(
+                    children: [
+                      Container(
+                        width: 36,
+                        height: 36,
+                        decoration: BoxDecoration(
+                          color: selectedColor,
+                          shape: BoxShape.circle,
+                          border: Border.all(
+                            color: Theme.of(context).colorScheme.outline.withValues(alpha: 0.4),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Text(
+                        '#${selectedColor.toARGB32().toRadixString(16).padLeft(8, '0').substring(2).toUpperCase()}',
+                        style: const TextStyle(fontFamily: 'monospace'),
+                      ),
+                      const SizedBox(width: 8),
+                      const Icon(Icons.edit, size: 16),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('Отмена'),
+            ),
+            TextButton(
+              onPressed: () {
+                Navigator.pop(dialogContext);
+                final r = selectedColor.r.round();
+                final g = selectedColor.g.round();
+                final b = selectedColor.b.round();
+                final ommContent =
+                    '${selectedShape}3\ncolor($r,$g,$b)\nautorate\n';
+                final template = "komet.omm'$ommContent'";
+                final currentText = _textController.text;
+                final cursorPos = _textController.selection.baseOffset.clamp(
+                  0, currentText.length,
+                );
+                final newText =
+                    currentText.substring(0, cursorPos) +
+                    template +
+                    currentText.substring(cursorPos);
+                _textController.value = TextEditingValue(
+                  text: newText,
+                  selection: TextSelection.collapsed(
+                    offset: cursorPos + template.length,
+                  ),
+                );
+              },
+              child: const Text('Вставить'),
+            ),
           ],
         ),
       ),

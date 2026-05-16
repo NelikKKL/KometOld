@@ -1,4 +1,7 @@
+import 'dart:ui_web' as ui_web;
+import 'dart:html' as html;
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 
 class GalaxyAnimatedText extends StatefulWidget {
   final String text;
@@ -174,6 +177,102 @@ class _PulseAnimatedTextState extends State<PulseAnimatedText>
           ),
         );
       },
+    );
+  }
+}
+
+// ── komet.omm widget ──────────────────────────────────────────────────────────
+
+class OmmModelWidget extends StatefulWidget {
+  final String ommContent;
+
+  const OmmModelWidget({super.key, required this.ommContent});
+
+  @override
+  State<OmmModelWidget> createState() => _OmmModelWidgetState();
+}
+
+class _OmmModelWidgetState extends State<OmmModelWidget> {
+  static bool _registeredFactory = false;
+  late final String _viewId;
+
+  @override
+  void initState() {
+    super.initState();
+    _viewId = 'omm-model-${DateTime.now().microsecondsSinceEpoch}';
+    if (kIsWeb) {
+      _registerWebView();
+    }
+  }
+
+  void _registerWebView() {
+    if (!_registeredFactory) {
+      _registeredFactory = true;
+      // ignore: undefined_prefixed_name
+      ui_web.platformViewRegistry.registerViewFactory(
+        'omm-model-view',
+        (int id) {
+          final container = html.DivElement()
+            ..style.width = '100%'
+            ..style.height = '100%';
+          return container;
+        },
+      );
+    }
+
+    // Create the actual element for this specific instance
+    final container = html.DivElement()
+      ..id = _viewId
+      ..style.width = '100%'
+      ..style.height = '200px';
+
+    final ommEl = html.Element.tag('omm-model')
+      ..setAttribute('autorate', '')
+      ..style.width = '100%'
+      ..style.height = '200px'
+      ..text = widget.ommContent;
+
+    container.append(ommEl);
+    html.document.body?.append(container);
+
+    // Move it to the shadow root via platform view
+    ui_web.platformViewRegistry.registerViewFactory(
+      _viewId,
+      (int id) => container,
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (!kIsWeb) {
+      // On native platforms show a placeholder
+      return Container(
+        width: 200,
+        height: 200,
+        decoration: BoxDecoration(
+          color: Colors.black87,
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: const Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.view_in_ar, color: Colors.white70, size: 40),
+              SizedBox(height: 8),
+              Text(
+                'komet.omm\n3D модель',
+                textAlign: TextAlign.center,
+                style: TextStyle(color: Colors.white54, fontSize: 12),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+    return SizedBox(
+      width: 200,
+      height: 200,
+      child: HtmlElementView(viewType: _viewId),
     );
   }
 }
