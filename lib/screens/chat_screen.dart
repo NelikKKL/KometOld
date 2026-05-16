@@ -2986,60 +2986,39 @@ class _ChatScreenState extends State<ChatScreen> {
         );
       },
       pageBuilder: (context, animation, secondaryAnimation) {
-        return AlertDialog(
-          title: const Text('Удалить чат'),
-          content: Text(
-            'Вы уверены, что хотите удалить чат с ${_currentContact.name}? Чат будет удален только у вас. Это действие нельзя отменить.',
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: const Text('Отмена'),
-            ),
-            FilledButton(
-              onPressed: () async {
+        return _DeleteChatDialog(
+          contactName: _currentContact.name,
+          onConfirm: () async {
+            try {
+              await ApiService.instance.clearChatHistory(
+                widget.chatId,
+                forAll: false,
+              );
+              await ApiService.instance.subscribeToChat(
+                widget.chatId,
+                false,
+              );
+              if (mounted) {
                 Navigator.of(context).pop();
-                try {
-                  await ApiService.instance.clearChatHistory(
-                    widget.chatId,
-                    forAll: false,
-                  );
-
-                  await ApiService.instance.subscribeToChat(
-                    widget.chatId,
-                    false,
-                  );
-
-                  if (mounted) {
-                    Navigator.of(context).pop();
-
-                    widget.onChatRemoved?.call();
-
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text('Чат удален'),
-                        backgroundColor: Colors.green,
-                      ),
-                    );
-                  }
-                } catch (e) {
-                  if (mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text('Ошибка удаления чата: $e'),
-                        backgroundColor: Theme.of(context).colorScheme.error,
-                      ),
-                    );
-                  }
-                }
-              },
-              style: FilledButton.styleFrom(
-                backgroundColor: Colors.red,
-                foregroundColor: Colors.white,
-              ),
-              child: const Text('Удалить'),
-            ),
-          ],
+                widget.onChatRemoved?.call();
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Чат удален'),
+                    backgroundColor: Colors.green,
+                  ),
+                );
+              }
+            } catch (e) {
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text('Ошибка удаления чата: $e'),
+                    backgroundColor: Theme.of(context).colorScheme.error,
+                  ),
+                );
+              }
+            }
+          },
         );
       },
     );
@@ -8051,6 +8030,94 @@ class _VideoWallpaperBackgroundState extends State<_VideoWallpaperBackground> {
         ),
 
         Container(color: Colors.black.withValues(alpha: 0.3)),
+      ],
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────
+// Диалог удаления чата с обратным отсчётом 3 секунды
+// ─────────────────────────────────────────────────────────────
+class _DeleteChatDialog extends StatefulWidget {
+  final String contactName;
+  final Future<void> Function() onConfirm;
+
+  const _DeleteChatDialog({
+    required this.contactName,
+    required this.onConfirm,
+  });
+
+  @override
+  State<_DeleteChatDialog> createState() => _DeleteChatDialogState();
+}
+
+class _DeleteChatDialogState extends State<_DeleteChatDialog> {
+  int _countdown = 3;
+  bool _isDeleting = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _startCountdown();
+  }
+
+  void _startCountdown() {
+    Future.doWhile(() async {
+      await Future.delayed(const Duration(seconds: 1));
+      if (!mounted) return false;
+      setState(() => _countdown--);
+      return _countdown > 0;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final canDelete = _countdown <= 0 && !_isDeleting;
+
+    return AlertDialog(
+      title: const Row(
+        children: [
+          Icon(Icons.warning_amber_rounded, color: Colors.orange),
+          SizedBox(width: 8),
+          Text('Удалить чат'),
+        ],
+      ),
+      content: Text(
+        'Вы уверены, что хотите удалить чат с ${widget.contactName}?\n\n'
+        'Чат будет скрыт навсегда только у вас. Это действие нельзя отменить.',
+      ),
+      actions: [
+        TextButton(
+          onPressed: _isDeleting ? null : () => Navigator.of(context).pop(),
+          child: const Text('Отмена'),
+        ),
+        FilledButton(
+          onPressed: canDelete
+              ? () async {
+                  setState(() => _isDeleting = true);
+                  Navigator.of(context).pop();
+                  await widget.onConfirm();
+                }
+              : null,
+          style: FilledButton.styleFrom(
+            backgroundColor: Colors.red,
+            foregroundColor: Colors.white,
+            disabledBackgroundColor: Colors.red.withValues(alpha: 0.4),
+            disabledForegroundColor: Colors.white70,
+          ),
+          child: _isDeleting
+              ? const SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: Colors.white,
+                  ),
+                )
+              : Text(
+                  _countdown > 0 ? 'Удалить ($_countdown)' : 'Удалить',
+                ),
+        ),
       ],
     );
   }

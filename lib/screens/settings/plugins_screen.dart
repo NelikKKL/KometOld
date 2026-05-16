@@ -232,31 +232,13 @@ class _PluginsScreenState extends State<PluginsScreen> {
     final plugin = _pluginService.plugins.firstWhere((p) => p.id == pluginId);
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Удалить плагин?'),
-        content: Text(
-          'Плагин "${plugin.name}" будет удалён без возможности восстановления.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Отмена'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(context, true),
-            style: FilledButton.styleFrom(
-              backgroundColor: Theme.of(context).colorScheme.error,
-              foregroundColor: Theme.of(context).colorScheme.onError,
-            ),
-            child: const Text('Удалить'),
-          ),
-        ],
-      ),
+      builder: (context) => _DeletePluginDialog(plugin: plugin),
     );
 
     if (confirmed == true) {
       await _pluginService.uninstallPlugin(pluginId);
       setState(() {});
+      _showSuccessSnack('Плагин "${plugin.name}" удалён');
     }
   }
 
@@ -759,6 +741,98 @@ class _PluginDetailsSheet extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────
+// Диалог удаления плагина с обратным отсчётом 3 секунды
+// Вызывается через долгое нажатие на плагин
+// ─────────────────────────────────────────────────────────────
+class _DeletePluginDialog extends StatefulWidget {
+  final KometPlugin plugin;
+
+  const _DeletePluginDialog({required this.plugin});
+
+  @override
+  State<_DeletePluginDialog> createState() => _DeletePluginDialogState();
+}
+
+class _DeletePluginDialogState extends State<_DeletePluginDialog> {
+  int _countdown = 3;
+
+  @override
+  void initState() {
+    super.initState();
+    _startCountdown();
+  }
+
+  void _startCountdown() {
+    Future.doWhile(() async {
+      await Future.delayed(const Duration(seconds: 1));
+      if (!mounted) return false;
+      setState(() => _countdown--);
+      return _countdown > 0;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final canDelete = _countdown <= 0;
+
+    return AlertDialog(
+      title: const Row(
+        children: [
+          Icon(Icons.warning_amber_rounded, color: Colors.orange),
+          SizedBox(width: 8),
+          Text('Удалить плагин?'),
+        ],
+      ),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              _PluginIcon(iconPath: widget.plugin.iconPath, size: 40),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  widget.plugin.name,
+                  style: theme.textTheme.titleSmall?.copyWith(
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Text(
+            'Плагин будет удалён без возможности восстановления.',
+            style: theme.textTheme.bodyMedium,
+          ),
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context, false),
+          child: const Text('Отмена'),
+        ),
+        FilledButton(
+          onPressed: canDelete ? () => Navigator.pop(context, true) : null,
+          style: FilledButton.styleFrom(
+            backgroundColor: theme.colorScheme.error,
+            foregroundColor: theme.colorScheme.onError,
+            disabledBackgroundColor:
+                theme.colorScheme.error.withValues(alpha: 0.4),
+            disabledForegroundColor: theme.colorScheme.onError.withValues(alpha: 0.7),
+          ),
+          child: Text(
+            _countdown > 0 ? 'Удалить ($_countdown)' : 'Удалить',
+          ),
+        ),
+      ],
     );
   }
 }
