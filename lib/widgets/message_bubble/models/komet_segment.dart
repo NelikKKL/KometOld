@@ -7,7 +7,8 @@ class KometColoredSegment {
   KometColoredSegment(this.text, this.color);
 }
 
-enum KometSegmentType { normal, colored, galaxy, pulse }
+// omm — новый тип сегмента для 3D-моделей OMM
+enum KometSegmentType { normal, colored, galaxy, pulse, omm }
 
 class KometSegment {
   final String text;

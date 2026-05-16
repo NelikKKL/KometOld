@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:webview_flutter/webview_flutter.dart';
 
 class GalaxyAnimatedText extends StatefulWidget {
   final String text;
@@ -174,6 +175,141 @@ class _PulseAnimatedTextState extends State<PulseAnimatedText>
           ),
         );
       },
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// OmmWidget — рендерит 3D-модель komet.omm прямо в пузыре сообщения.
+// Синтаксис: komet.omm(цвет)' OMM-код '
+//   где (цвет) — необязательный hex-цвет фона (можно опустить скобки).
+//
+// Примеры:
+//   komet.omm' cube3 color(255,100,50) '
+//   komet.omm(#1a1a2e)' cube3 scale(1.5) animation(x1,x-1) '
+// ─────────────────────────────────────────────────────────────────────────────
+class OmmWidget extends StatefulWidget {
+  /// Сырой OMM-код (всё, что между кавычками)
+  final String ommCode;
+
+  /// Цвет фона canvas (опционально, по умолчанию прозрачный/тёмный)
+  final Color backgroundColor;
+
+  const OmmWidget({
+    super.key,
+    required this.ommCode,
+    this.backgroundColor = const Color(0xFF1A1A2E),
+  });
+
+  @override
+  State<OmmWidget> createState() => _OmmWidgetState();
+}
+
+class _OmmWidgetState extends State<OmmWidget> {
+  late final WebViewController _controller;
+  bool _isLoaded = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = WebViewController()
+      ..setJavaScriptMode(JavaScriptMode.unrestricted)
+      ..setBackgroundColor(widget.backgroundColor)
+      ..setNavigationDelegate(NavigationDelegate(
+        onPageFinished: (_) {
+          if (mounted) setState(() => _isLoaded = true);
+        },
+      ))
+      ..loadHtmlString(_buildHtml());
+  }
+
+  String _colorToCss(Color c) {
+    return 'rgb(${c.red},${c.green},${c.blue})';
+  }
+
+  String _buildHtml() {
+    final bg = _colorToCss(widget.backgroundColor);
+    // Экранируем одинарные кавычки в OMM-коде для вставки в JS-строку
+    final escapedCode = widget.ommCode
+        .replaceAll('\\', '\\\\')
+        .replaceAll('`', '\\`');
+
+    return '''<!DOCTYPE html>
+<html>
+<head>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  html, body { width:100%; height:100%; background:$bg; overflow:hidden; }
+  omm-model { width:100%; height:100%; display:block; }
+</style>
+</head>
+<body>
+<omm-model freer autorate id="m"></omm-model>
+<script>
+${_getOmmCoreJs()}
+document.getElementById('m').setAttribute('src', \`${escapedCode}\`);
+</script>
+</body>
+</html>''';
+  }
+
+  /// Возвращает содержимое omm-core.js, встроенное как строка.
+  /// Файл подключается через assets (см. pubspec.yaml: assets/omm-core.js).
+  /// Для упрощения интеграции omm-core.js грузится через rootBundle
+  /// и кэшируется в статическом поле.
+  static String? _cachedOmmCoreJs;
+
+  String _getOmmCoreJs() {
+    // В реальном коде здесь нужно синхронно отдать содержимое omm-core.js.
+    // Т.к. loadHtmlString вызывается в initState (синхронно),
+    // используем отдельный метод _buildHtmlAsync() ниже.
+    // Здесь оставляем заглушку — реальный JS подставляется через _buildHtmlAsync.
+    return _cachedOmmCoreJs ?? '/* omm-core not loaded yet */';
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _loadOmmCoreAndReload();
+  }
+
+  Future<void> _loadOmmCoreAndReload() async {
+    if (_OmmWidgetState._cachedOmmCoreJs != null) return;
+    try {
+      final js = await DefaultAssetBundle.of(context)
+          .loadString('assets/omm-core.js');
+      _OmmWidgetState._cachedOmmCoreJs = js;
+      // Перезагружаем HTML уже с реальным JS
+      await _controller.loadHtmlString(_buildHtml());
+    } catch (e) {
+      debugPrint('OmmWidget: не удалось загрузить omm-core.js: $e');
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 220,
+      height: 220,
+      decoration: BoxDecoration(
+        color: widget.backgroundColor,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Stack(
+        children: [
+          WebViewWidget(controller: _controller),
+          if (!_isLoaded)
+            const Center(
+              child: SizedBox(
+                width: 24,
+                height: 24,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
+            ),
+        ],
+      ),
     );
   }
 }

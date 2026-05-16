@@ -878,6 +878,34 @@ class _ChatScreenState extends State<ChatScreen> {
                 });
               },
             ),
+            const SizedBox(height: 8),
+            _SpecialMessageButton(
+              label: '3D-модель OMM',
+              template: "komet.omm' cube3 '",
+              icon: Icons.view_in_ar,
+              onTap: () {
+                Navigator.pop(context);
+                Future.microtask(() {
+                  if (!mounted) return;
+                  final currentText = _textController.text;
+                  final cursorPos = _textController.selection.baseOffset.clamp(
+                    0,
+                    currentText.length,
+                  );
+                  const template = "komet.omm' cube3 '";
+                  final newText =
+                      currentText.substring(0, cursorPos) +
+                      template +
+                      currentText.substring(cursorPos);
+                  _textController.value = TextEditingValue(
+                    text: newText,
+                    selection: TextSelection.collapsed(
+                      offset: cursorPos + template.length - 1,
+                    ),
+                  );
+                });
+              },
+            ),
             const SizedBox(height: 16),
           ],
         ),
@@ -904,11 +932,12 @@ class _ChatScreenState extends State<ChatScreen> {
     final cursorPos = _textController.selection.baseOffset;
     const prefix1 = 'komet.color_#';
     const prefix2 = 'komet.cosmetic.pulse#';
+    const prefix3 = 'komet.omm(';
 
     String? detectedPrefix;
     int? prefixStartPos;
 
-    for (final prefix in [prefix1, prefix2]) {
+    for (final prefix in [prefix1, prefix2, prefix3]) {
       int searchStart = 0;
       int lastFound = -1;
       while (true) {
@@ -4705,6 +4734,10 @@ class _ChatScreenState extends State<ChatScreen> {
                                             '$_currentKometColorPrefix$hex\'ваш текст\'';
                                         final textLength = newText.length;
                                         cursorOffset = textLength - 12;
+                                      } else if (_currentKometColorPrefix ==
+                                          'komet.omm(') {
+                                        newText = 'komet.omm(#$hex)\' cube3 \'';
+                                        cursorOffset = newText.length - 1;
                                       } else {
                                         return;
                                       }
@@ -6130,7 +6163,9 @@ class _KometColorPickerBarState extends State<_KometColorPickerBar> {
         children: [
           Expanded(
             child: Text(
-              'Выберите цвет для komet.color',
+              _currentKometColorPrefix == 'komet.omm('
+                  ? 'Выберите цвет фона для komet.omm'
+                  : 'Выберите цвет для komet.color',
               style: TextStyle(
                 fontSize: 12,
                 color: colors.onSurfaceVariant,

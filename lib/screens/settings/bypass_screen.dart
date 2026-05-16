@@ -466,6 +466,113 @@ class _BypassScreenState extends State<BypassScreen> {
                     ),
                   ),
                   const SizedBox(height: 24),
+
+                  // ── komet.omm (3D-модели) ─────────────────────────────────
+                  Text(
+                    'Пример (3D-модель OMM):',
+                    style: TextStyle(
+                      fontWeight: FontWeight.w600,
+                      color: colors.onSurface,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  SelectableText(
+                    "komet.omm' cube3 color(100,180,255) '",
+                    style: TextStyle(
+                      fontFamily: 'monospace',
+                      color: colors.onSurface,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    'Отображение: интерактивная 3D-фигура прямо в пузыре сообщения. '
+                    'Можно вращать пальцем, зумить щипком.',
+                    style: TextStyle(
+                      color: colors.onSurfaceVariant,
+                      fontSize: 12,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'С цветом фона:',
+                    style: TextStyle(
+                      fontWeight: FontWeight.w500,
+                      color: colors.onSurface,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  SelectableText(
+                    "komet.omm(#0d1117)' sphere3 color(80,200,120) animation(rr90,rr-90) '",
+                    style: TextStyle(
+                      fontFamily: 'monospace',
+                      color: colors.onSurface,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    'Формат: komet.omm(#RRGGBB)\' OMM-код \'  — цвет фона задаётся '
+                    'hex-значением в скобках (необязательно).',
+                    style: TextStyle(
+                      color: colors.onSurfaceVariant,
+                      fontSize: 12,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: colors.surface,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(
+                        color: colors.outline.withValues(alpha: 0.3),
+                      ),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Доступные фигуры:',
+                          style: TextStyle(
+                            fontWeight: FontWeight.w600,
+                            color: colors.onSurface,
+                            fontSize: 13,
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+                        for (final shape in [
+                          'cube3',
+                          'sphere3',
+                          'cylinder3',
+                          'pyramid3',
+                          'triangle3',
+                          'image3',
+                        ])
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: 2),
+                            child: SelectableText(
+                              shape,
+                              style: TextStyle(
+                                fontFamily: 'monospace',
+                                color: colors.primary,
+                                fontSize: 13,
+                              ),
+                            ),
+                          ),
+                        const SizedBox(height: 8),
+                        Text(
+                          'Параметры: color(r,g,b)  scale(n)  x(n) y(n) z(n)  '
+                          'rr(deg)  ru(deg)  animation(rr90,rr-90)  autorate',
+                          style: TextStyle(
+                            color: colors.onSurfaceVariant,
+                            fontSize: 12,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  // ── конец секции komet.omm ────────────────────────────────
+
+                  const SizedBox(height: 24),
                   if (!_isLoadingSettings) ...[
                     Consumer<ThemeProvider>(
                       builder: (context, themeProvider, child) {

@@ -4556,7 +4556,8 @@ class ChatMessageBubble extends StatelessWidget {
               textAlign: TextAlign.left,
             )
           else if (message.text.contains("komet.cosmetic.") ||
-              message.text.contains("komet.color_"))
+              message.text.contains("komet.color_") ||
+              message.text.contains("komet.omm"))
             _buildMixedMessageContent(
               message.text,
               defaultTextStyle,
@@ -4696,6 +4697,7 @@ class ChatMessageBubble extends StatelessWidget {
       int nextPulse = text.indexOf("komet.cosmetic.pulse#", index);
       int nextGalaxy = text.indexOf("komet.cosmetic.galaxy'", index);
       int nextColor = text.indexOf("komet.color_", index);
+      int nextOmm   = text.indexOf("komet.omm", index);
 
       int nextMarker = text.length;
       String? markerType;
@@ -4710,6 +4712,10 @@ class ChatMessageBubble extends StatelessWidget {
       if (nextColor != -1 && nextColor < nextMarker) {
         nextMarker = nextColor;
         markerType = "color";
+      }
+      if (nextOmm != -1 && nextOmm < nextMarker) {
+        nextMarker = nextOmm;
+        markerType = "omm";
       }
 
       if (markerType == null) {
@@ -4802,6 +4808,43 @@ class ChatMessageBubble extends StatelessWidget {
           ),
         );
         index = colorStart + 10;
+      } else if (markerType == "omm") {
+        // Синтаксис: komet.omm(#RRGGBB)' OMM-код '
+        //         или komet.omm' OMM-код '
+        const marker = 'komet.omm';
+        final afterMarker = text.substring(nextMarker + marker.length);
+
+        Color bgColor = const Color(0xFF1A1A2E);
+        int codeSearchStart = 0;
+        if (afterMarker.startsWith('(')) {
+          final closeParen = afterMarker.indexOf(')');
+          if (closeParen != -1) {
+            final hexRaw = afterMarker.substring(1, closeParen).trim();
+            bgColor = _parseKometHexColor(hexRaw, null) ?? const Color(0xFF1A1A2E);
+            codeSearchStart = closeParen + 1;
+          }
+        }
+
+        final rest = afterMarker.substring(codeSearchStart);
+        if (rest.startsWith("'")) {
+          final closeQuote = rest.indexOf("'", 1);
+          if (closeQuote != -1) {
+            final ommCode = rest.substring(1, closeQuote);
+            segments.add(
+              KometSegment(ommCode, KometSegmentType.omm, color: bgColor),
+            );
+            index = nextMarker + marker.length + codeSearchStart + closeQuote + 1;
+            continue;
+          }
+        }
+        // Не удалось распарсить — показываем как обычный текст
+        final safeEnd = (nextMarker + marker.length + 10 < text.length)
+            ? nextMarker + marker.length + 10
+            : text.length;
+        segments.add(
+          KometSegment(text.substring(nextMarker, safeEnd), KometSegmentType.normal),
+        );
+        index = safeEnd;
       }
     }
 
@@ -4880,6 +4923,11 @@ class ChatMessageBubble extends StatelessWidget {
               child: PulseAnimatedText(
                 text: "komet.cosmetic.pulse#$hexStr'${seg.text}'",
               ),
+            );
+          case KometSegmentType.omm:
+            return OmmWidget(
+              ommCode: seg.text,
+              backgroundColor: seg.color ?? const Color(0xFF1A1A2E),
             );
         }
       }).toList(),
