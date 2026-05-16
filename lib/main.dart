@@ -290,6 +290,7 @@ class MyApp extends StatelessWidget {
 
         return MaterialApp(
           title: 'Komet',
+          debugShowCheckedModeBanner: false,
           navigatorKey: navigatorKey,
           builder: (context, child) {
             final showHud =

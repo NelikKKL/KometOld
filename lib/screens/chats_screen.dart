@@ -107,15 +107,33 @@ class _ChatsScreenState extends State<ChatsScreen>
   SharedPreferences? _prefs;
   Map<int, Map<String, dynamic>> _chatDrafts = {};
 
+  // Чаты, скрытые пользователем навсегда (персистентно через SharedPreferences)
+  static const String _hiddenChatsKey = 'hidden_chat_ids';
+  final Set<int> _hiddenChatIds = {};
+
   Future<void> _initializePrefs() async {
     final p = await SharedPreferences.getInstance();
+    // Загружаем сохранённые скрытые чаты
+    final saved = p.getStringList(_hiddenChatsKey) ?? [];
+    final ids = saved.map((s) => int.tryParse(s)).whereType<int>().toSet();
     if (mounted) {
       setState(() {
         _prefs = p;
+        _hiddenChatIds.addAll(ids);
       });
     } else {
       _prefs = p;
+      _hiddenChatIds.addAll(ids);
     }
+  }
+
+  Future<void> _persistHideChat(int chatId) async {
+    _hiddenChatIds.add(chatId);
+    final prefs = _prefs ?? await SharedPreferences.getInstance();
+    await prefs.setStringList(
+      _hiddenChatsKey,
+      _hiddenChatIds.map((id) => id.toString()).toList(),
+    );
   }
 
   @override
@@ -384,6 +402,7 @@ class _ChatsScreenState extends State<ChatsScreen>
 
   void _removeChatLocally(int chatId) {
     if (!mounted) return;
+    _persistHideChat(chatId);
     setState(() {
       _allChats.removeWhere((c) => c.id == chatId);
       _filteredChats.removeWhere((c) => c.id == chatId);
@@ -414,6 +433,7 @@ class _ChatsScreenState extends State<ChatsScreen>
         _allChats = chats
             .where((json) => json != null)
             .map((json) => Chat.fromJson((json as Map).cast<String, dynamic>()))
+            .where((chat) => !_hiddenChatIds.contains(chat.id))
             .toList();
         _contacts.clear();
         for (final contactJson in contacts) {
@@ -1066,6 +1086,7 @@ class _ChatsScreenState extends State<ChatsScreen>
         final newChats = chats
             .where((json) => json != null)
             .map((json) => Chat.fromJson((json as Map).cast<String, dynamic>()))
+            .where((chat) => !_hiddenChatIds.contains(chat.id))
             .toList();
 
         final newChatIds = newChats.map((c) => c.id).toSet();
@@ -1316,6 +1337,7 @@ class _ChatsScreenState extends State<ChatsScreen>
                     .map(
                       (json) => Chat.fromJson((json as Map<String, dynamic>)),
                     )
+                    .where((chat) => !_hiddenChatIds.contains(chat.id))
                     .toList();
                 _chatsLoaded = true;
                 _listenForUpdates();
