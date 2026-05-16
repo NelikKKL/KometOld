@@ -366,45 +366,6 @@ class _BypassScreenState extends State<BypassScreen> {
                           ),
                         ),
                         const SizedBox(height: 16),
-                        // ── komet.omm section ──
-                        Text(
-                          "3D модель (komet.omm):",
-                          style: TextStyle(
-                            fontWeight: FontWeight.w600,
-                            color: colors.onSurface,
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          "Отображает интерактивную 3D модель прямо в пузыре сообщения. Поддерживает форматы cube, sphere, pyramid, cylinder, triangle.",
-                          style: TextStyle(
-                            color: colors.onSurfaceVariant,
-                            fontSize: 12,
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        SelectableText(
-                          "komet.omm'cube3\ncolor(255,100,50)\nautorate\n'",
-                          style: TextStyle(
-                            fontFamily: 'monospace',
-                            color: colors.onSurface,
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          "• cube3 / sphere3 / pyramid3 / cylinder3 / triangle3 — фигура\n"
-                          "• color(R,G,B) — цвет фигуры\n"
-                          "• autorate — автовращение\n"
-                          "• scale(N) — масштаб\n"
-                          "• rr(N) / ru(N) — начальный поворот\n"
-                          "• x(N) y(N) z(N) — позиция",
-                          style: TextStyle(
-                            color: colors.onSurfaceVariant,
-                            fontSize: 12,
-                            height: 1.5,
-                          ),
-                        ),
-                        const SizedBox(height: 16),
                         Text(
                           "Сложный пример:",
                           style: TextStyle(

@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:gwid/utils/theme_provider.dart';
 import 'package:provider/provider.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
 class SpecialSettingsScreen extends StatefulWidget {
   final bool isModal;
@@ -21,7 +20,6 @@ class _SpecialSettingsScreenState extends State<SpecialSettingsScreen>
   late bool _showSecondsValue;
   late bool _showDeletedMessagesValue;
   late bool _viewRedactHistoryValue;
-  bool _kometOmmEnabled = false;
 
   @override
   void initState() {
@@ -49,14 +47,6 @@ class _SpecialSettingsScreenState extends State<SpecialSettingsScreen>
     _showSecondsValue = themeProvider.showSeconds;
     _showDeletedMessagesValue = themeProvider.showDeletedMessages;
     _viewRedactHistoryValue = themeProvider.viewRedactHistory;
-
-    SharedPreferences.getInstance().then((prefs) {
-      if (mounted) {
-        setState(() {
-          _kometOmmEnabled = prefs.getBool('komet_omm_enabled') ?? true;
-        });
-      }
-    });
 
     _animationController.forward();
   }
@@ -433,58 +423,6 @@ class _SpecialSettingsScreenState extends State<SpecialSettingsScreen>
                         _viewRedactHistoryValue = value;
                       });
                       themeProvider.setViewRedactHistory(value);
-                    },
-                    activeThumbColor: colors.primary,
-                    activeTrackColor: colors.primary.withValues(alpha: 0.5),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 16),
-              // ── komet.omm toggle ──
-              Row(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(10),
-                    decoration: BoxDecoration(
-                      color: colors.primaryContainer.withValues(alpha: 0.5),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Icon(
-                      Icons.view_in_ar,
-                      color: colors.primary,
-                      size: 24,
-                    ),
-                  ),
-                  const SizedBox(width: 16),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'komet.omm (3D модели)',
-                          style: GoogleFonts.manrope(
-                            textStyle: textTheme.titleMedium,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          'Отображать 3D модели в сообщениях (komet.omm\'...\')',
-                          style: GoogleFonts.manrope(
-                            textStyle: textTheme.bodySmall,
-                            color: colors.onSurfaceVariant,
-                            height: 1.3,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  Switch(
-                    value: _kometOmmEnabled,
-                    onChanged: (bool value) async {
-                      setState(() => _kometOmmEnabled = value);
-                      final prefs = await SharedPreferences.getInstance();
-                      await prefs.setBool('komet_omm_enabled', value);
                     },
                     activeThumbColor: colors.primary,
                     activeTrackColor: colors.primary.withValues(alpha: 0.5),

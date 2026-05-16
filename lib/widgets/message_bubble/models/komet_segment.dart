@@ -7,7 +7,7 @@ class KometColoredSegment {
   KometColoredSegment(this.text, this.color);
 }
 
-enum KometSegmentType { normal, colored, galaxy, pulse, omm }
+enum KometSegmentType { normal, colored, galaxy, pulse }
 
 class KometSegment {
   final String text;
