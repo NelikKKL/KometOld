@@ -4709,6 +4709,7 @@ class _ChatScreenState extends State<ChatScreen> {
                               children: [
                                 if (_showKometColorPicker)
                                   _KometColorPickerBar(
+                                    activePrefix: _currentKometColorPrefix,
                                     onColorSelected: (color) {
                                       if (_currentKometColorPrefix == null)
                                         return;
@@ -6088,8 +6089,12 @@ class _SpecialMessageButton extends StatelessWidget {
 
 class _KometColorPickerBar extends StatefulWidget {
   final ValueChanged<Color> onColorSelected;
+  final String? activePrefix;
 
-  const _KometColorPickerBar({required this.onColorSelected});
+  const _KometColorPickerBar({
+    required this.onColorSelected,
+    this.activePrefix,
+  });
 
   @override
   State<_KometColorPickerBar> createState() => _KometColorPickerBarState();
@@ -6163,7 +6168,7 @@ class _KometColorPickerBarState extends State<_KometColorPickerBar> {
         children: [
           Expanded(
             child: Text(
-              _currentKometColorPrefix == 'komet.omm('
+              widget.activePrefix == 'komet.omm('
                   ? 'Выберите цвет фона для komet.omm'
                   : 'Выберите цвет для komet.color',
               style: TextStyle(
