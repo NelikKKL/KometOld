@@ -86,7 +86,7 @@ class _PluginJsRuntime {
         debugPrint('[PluginJS] Plugin "$pluginId" runtime ready');
       },
       onConsoleMessage: (ctrl, msg) {
-        debugPrint('[PluginJS][$pluginId] ${msg.messageLevel.name}: ${msg.message}');
+        debugPrint('[PluginJS][$pluginId] ${msg.messageLevel.toValue()}: ${msg.message}');
       },
       onReceivedError: (ctrl, req, err) {
         debugPrint('[PluginJS][$pluginId] Error: ${err.description}');
