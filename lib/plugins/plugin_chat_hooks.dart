@@ -180,6 +180,11 @@ class PluginChatHooks {
     _menuItems.remove(pluginId);
   }
 
+  /// Синхронно получить уже зарегистрированные пункты конкретного плагина.
+  List<PluginChatMenuItem> getChatMenuItemsSync(String pluginId) {
+    return List.unmodifiable(_menuItems[pluginId] ?? []);
+  }
+
   // ───────────────────────────────────────────────
   // Применение перехватчиков (вызывается из ChatScreen)
   // ───────────────────────────────────────────────

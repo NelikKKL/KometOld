@@ -285,7 +285,7 @@ class _MeshChatScreenState extends State<MeshChatScreen>
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(Icons.radio_tower, size: 48,
+          Icon(Icons.cell_tower, size: 48,
               color: colors.onSurface.withValues(alpha: 0.2)),
           const SizedBox(height: 12),
           Text(
@@ -458,7 +458,7 @@ class _MeshChatScreenState extends State<MeshChatScreen>
                       color: p.isConnected ? colors.primary : null,
                     ),
                     title: Text(p.name),
-                    subtitle: Text(p.address),
+                    subtitle: Text(p.deviceId),
                     trailing: p.isConnected
                         ? const Icon(Icons.circle, color: Colors.green, size: 10)
                         : null,

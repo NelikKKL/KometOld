@@ -8,7 +8,9 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'plugin_model.dart';
 import 'plugin_permissions.dart';
+import 'dart:async';
 import 'plugin_js_engine.dart';
+import 'plugin_chat_hooks.dart';
 
 class PluginService {
   static final PluginService _instance = PluginService._internal();
@@ -20,6 +22,7 @@ class PluginService {
   final Map<String, dynamic> _pluginValues = {};
 
   bool _initialized = false;
+  StreamSubscription<PluginJsEvent>? _jsSub;
 
   List<KometPlugin> get plugins => List.unmodifiable(_plugins);
   List<KometPlugin> get enabledPlugins =>
@@ -71,6 +74,76 @@ class PluginService {
 
     // Запускаем JS-движки для включённых плагинов со скриптом
     await PluginJsEngine().startAll(enabledPlugins);
+
+    // Подписываемся на события от JS-плагинов
+    _jsSub?.cancel();
+    _jsSub = PluginJsEngine().events.listen(_handleJsEvent);
+  }
+
+  // ─────────────────────────────────────────────
+  // Обработка событий от JS-движка
+  // ─────────────────────────────────────────────
+  void _handleJsEvent(PluginJsEvent event) {
+    switch (event.type) {
+      case 'api.chatMenu.addItem':
+        _handleChatMenuAddItem(event.pluginId, event.payload);
+        break;
+      case 'notify':
+        // уже обрабатывается в UI через stream
+        break;
+      default:
+        break;
+    }
+  }
+
+  void _handleChatMenuAddItem(String pluginId, Map<String, dynamic> args) {
+    final id        = args['id']       as String? ?? 'item_$pluginId';
+    final label     = args['label']    as String? ?? 'Действие';
+    final iconName  = args['iconName'] as String? ?? 'star';
+
+    final icon = _resolveIcon(iconName);
+
+    final item = PluginChatMenuItem(
+      id:       id,
+      label:    label,
+      icon:     icon,
+      pluginId: pluginId,
+      onTap:    (chatId, context) async {
+        await PluginJsEngine().broadcastEvent(
+          'chatMenu.$id',
+          {'chatId': chatId},
+        );
+      },
+    );
+
+    // Добавляем к уже зарегистрированным пунктам плагина
+    final hooks = PluginChatHooks();
+    final existing = hooks.getChatMenuItemsSync(pluginId);
+    hooks.registerChatMenuItems(pluginId, [...existing, item]);
+
+    debugPrint('[PluginService] Зарегистрирован пункт меню "$label" от $pluginId');
+  }
+
+  IconData _resolveIcon(String name) {
+    const map = <String, IconData>{
+      'download':      Icons.download,
+      'star':          Icons.star_outline,
+      'delete':        Icons.delete_outline,
+      'share':         Icons.share,
+      'copy':          Icons.copy,
+      'edit':          Icons.edit_outlined,
+      'info':          Icons.info_outline,
+      'bookmark':      Icons.bookmark_outline,
+      'lock':          Icons.lock_outline,
+      'search':        Icons.search,
+      'settings':      Icons.settings_outlined,
+      'archive':       Icons.archive_outlined,
+      'export':        Icons.upload_file,
+      'save':          Icons.save_outlined,
+      'forward':       Icons.forward,
+      'flag':          Icons.flag_outlined,
+    };
+    return map[name] ?? Icons.extension_outlined;
   }
 
   // ─────────────────────────────────────────────
