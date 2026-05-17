@@ -4,37 +4,26 @@ import 'dart:math';
 import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart';
-import 'package:flutter_bluetooth_serial/flutter_bluetooth_serial.dart';
+import 'package:flutter_blue_plus/flutter_blue_plus.dart';
+
+// ── UUIDs (Komet custom BLE GATT service) ────────────────────────────────────
+const _kServiceUuid = '12340000-1234-1234-1234-123456789abc';
+const _kCharUuid    = '12340001-1234-1234-1234-123456789abc';
+const _kChunkSize   = 20; // safe BLE MTU without negotiation
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Модели
+// Models
 // ─────────────────────────────────────────────────────────────────────────────
 
-/// Сообщение в mesh-сети
 class MeshMessage {
-  /// Уникальный ID сообщения (используется для дедупликации при ретрансляции)
   final String id;
-
-  /// ID узла-отправителя (MAC-адрес BT в hex без разделителей)
   final String originId;
-
-  /// ID получателя (MAC или '*' для broadcast)
   final String targetId;
-
-  /// Текстовое содержимое
   final String text;
-
-  /// Отображаемое имя отправителя
   final String senderName;
-
-  /// Временная метка (Unix ms, UTC)
-  final int timestamp;
-
-  /// TTL — сколько хопов сообщение ещё может пройти
-  final int ttl;
-
-  /// Признак того, что сообщение пришло через relay (не от прямого собеседника)
-  final bool isRelayed;
+  final int    timestamp;
+  final int    ttl;
+  final bool   isRelayed;
 
   const MeshMessage({
     required this.id,
@@ -43,422 +32,336 @@ class MeshMessage {
     required this.text,
     required this.senderName,
     required this.timestamp,
-    this.ttl = 5,
+    this.ttl       = 5,
     this.isRelayed = false,
   });
 
   factory MeshMessage.fromJson(Map<String, dynamic> j) => MeshMessage(
-        id: j['id'] as String,
-        originId: j['originId'] as String,
-        targetId: j['targetId'] as String,
-        text: j['text'] as String,
-        senderName: j['senderName'] as String,
-        timestamp: j['timestamp'] as int,
-        ttl: (j['ttl'] as int?) ?? 5,
-        isRelayed: (j['isRelayed'] as bool?) ?? false,
+        id:         j['id'] as String,
+        originId:   j['o']  as String,
+        targetId:   j['t']  as String,
+        text:       j['x']  as String,
+        senderName: j['n']  as String,
+        timestamp:  j['ts'] as int,
+        ttl:        (j['ttl'] as int?) ?? 5,
+        isRelayed:  (j['r'] as bool?) ?? false,
       );
 
   Map<String, dynamic> toJson() => {
-        'id': id,
-        'originId': originId,
-        'targetId': targetId,
-        'text': text,
-        'senderName': senderName,
-        'timestamp': timestamp,
-        'ttl': ttl,
-        'isRelayed': isRelayed,
+        'id': id, 'o': originId, 't': targetId,
+        'x': text, 'n': senderName, 'ts': timestamp,
+        'ttl': ttl, 'r': isRelayed,
       };
 
   MeshMessage copyWith({int? ttl, bool? isRelayed}) => MeshMessage(
-        id: id,
-        originId: originId,
-        targetId: targetId,
-        text: text,
-        senderName: senderName,
-        timestamp: timestamp,
-        ttl: ttl ?? this.ttl,
-        isRelayed: isRelayed ?? this.isRelayed,
+        id: id, originId: originId, targetId: targetId,
+        text: text, senderName: senderName, timestamp: timestamp,
+        ttl: ttl ?? this.ttl, isRelayed: isRelayed ?? this.isRelayed,
       );
 }
 
-/// Узел (peer) в mesh-сети
 class MeshPeer {
-  final String address; // BT MAC
-  final String name;    // видимое имя
+  final String   deviceId;
+  final String   name;
   final DateTime lastSeen;
-  final bool isConnected;
+  final bool     isConnected;
 
   const MeshPeer({
-    required this.address,
+    required this.deviceId,
     required this.name,
     required this.lastSeen,
     this.isConnected = false,
   });
 
   MeshPeer copyWith({bool? isConnected, DateTime? lastSeen}) => MeshPeer(
-        address: address,
-        name: name,
-        lastSeen: lastSeen ?? this.lastSeen,
+        deviceId: deviceId, name: name,
+        lastSeen:    lastSeen    ?? this.lastSeen,
         isConnected: isConnected ?? this.isConnected,
       );
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Bluetooth Mesh Transport — синглтон
+// Internal per-peer connection state
 // ─────────────────────────────────────────────────────────────────────────────
 
-/// Простой Bluetooth mesh для P2P-сообщений без интернета.
-///
-/// Принцип работы:
-///  1. Устройство делает discovery, подключается ко всем обнаруженным пирам.
-///  2. Каждое сообщение содержит TTL; при пересылке TTL уменьшается.
-///  3. Уже виденные ID сообщений кешируются → дедупликация петель.
-///  4. Сообщение с targetId == '*' → broadcast; иначе unicast.
-///
-/// Ограничение: `flutter_bluetooth_serial` — Android only.
-/// На iOS нужен CoreBluetooth (BLE) — заглушка предусмотрена.
+class _PeerConn {
+  final BluetoothDevice          device;
+  BluetoothCharacteristic?       char;
+  final List<int>                rxBuf = [];
+  StreamSubscription<dynamic>?   notifySub;
+  StreamSubscription<dynamic>?   stateSub;
+
+  _PeerConn(this.device);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// BluetoothMeshTransport
+// ─────────────────────────────────────────────────────────────────────────────
+
 class BluetoothMeshTransport {
   static final BluetoothMeshTransport _instance =
       BluetoothMeshTransport._internal();
   factory BluetoothMeshTransport() => _instance;
   BluetoothMeshTransport._internal();
 
-  // ── Состояние ────────────────────────────────────────────────────────────
-
-  bool _running = false;
-  String? _localAddress;
+  bool   _running   = false;
+  String _localId   = '';
   String _localName = 'Komet';
 
-  /// Активные соединения: address → соединение
-  final Map<String, BluetoothConnection> _connections = {};
+  final Map<String, _PeerConn> _peers      = {};
+  final Set<String>            _seenIds    = {};
+  final Set<String>            _connecting = {};
 
-  /// Накопленные буферы входящих данных (по пирам)
-  final Map<String, List<int>> _buffers = {};
-
-  /// Кеш ID уже обработанных сообщений (дедупликация)
-  final Set<String> _seenIds = {};
-
-  /// Известные пиры (подключённые + обнаруженные)
-  final Map<String, MeshPeer> _peers = {};
-
-  // ── Стримы ───────────────────────────────────────────────────────────────
-
-  final StreamController<MeshMessage> _incomingCtrl =
-      StreamController<MeshMessage>.broadcast();
-
-  final StreamController<List<MeshPeer>> _peersCtrl =
-      StreamController<List<MeshPeer>>.broadcast();
-
-  /// Входящие mesh-сообщения адресованные нам или broadcast
-  Stream<MeshMessage> get incoming => _incomingCtrl.stream;
-
-  /// Список известных пиров (обновляется при изменениях)
-  Stream<List<MeshPeer>> get peers => _peersCtrl.stream;
-
-  List<MeshPeer> get currentPeers => List.unmodifiable(_peers.values);
-  bool get isRunning => _running;
-  String? get localAddress => _localAddress;
-
-  // ── Таймеры ──────────────────────────────────────────────────────────────
-
-  Timer? _discoveryTimer;
+  StreamSubscription<dynamic>? _scanSub;
+  Timer? _rescanTimer;
   Timer? _cleanupTimer;
 
-  // ── UUID сервиса (SPP-подобный профиль) ──────────────────────────────────
+  final _inCtrl    = StreamController<MeshMessage>.broadcast();
+  final _peersCtrl = StreamController<List<MeshPeer>>.broadcast();
 
-  static const String _kometUuid = '00001101-0000-1000-8000-00805F9B34FB'; // SPP
+  Stream<MeshMessage>    get incoming     => _inCtrl.stream;
+  Stream<List<MeshPeer>> get peers        => _peersCtrl.stream;
+  bool                   get isRunning    => _running;
+  String                 get localAddress => _localId;
 
-  // ─────────────────────────────────────────────
-  // Запуск / остановка
-  // ─────────────────────────────────────────────
+  List<MeshPeer> get currentPeers => _peers.values.map((c) {
+        final n = c.device.platformName;
+        return MeshPeer(
+          deviceId:    c.device.remoteId.str,
+          name:        n.isEmpty ? c.device.remoteId.str : n,
+          lastSeen:    DateTime.now(),
+          isConnected: c.device.isConnected,
+        );
+      }).toList();
 
-  /// Запустить mesh.
-  /// [displayName] — имя, видимое другим устройствам.
+  // ── Start ─────────────────────────────────────────────────────────────────
+
   Future<MeshStartResult> start({String displayName = 'Komet'}) async {
     if (_running) return MeshStartResult.alreadyRunning;
 
-    try {
-      final bt = FlutterBluetoothSerial.instance;
+    _localName = displayName;
+    _localId   = _genId();
 
-      // Проверяем доступность
-      final isAvailable = await bt.isAvailable;
-      if (isAvailable != true) return MeshStartResult.notAvailable;
-
-      final isEnabled = await bt.isEnabled;
-      if (isEnabled != true) {
-        final enabled = await bt.requestEnable();
-        if (enabled != true) return MeshStartResult.disabled;
-      }
-
-      _localName = displayName;
-      final info = await bt.getLocalName();
-      _localAddress = (await bt.address) ?? 'unknown';
-
-      _running = true;
-
-      // Периодический discovery каждые 30 с
-      _discoveryTimer = Timer.periodic(
-        const Duration(seconds: 30),
-        (_) => _runDiscovery(),
-      );
-
-      // Очистка устаревших пиров каждые 2 мин
-      _cleanupTimer = Timer.periodic(
-        const Duration(minutes: 2),
-        (_) => _cleanupPeers(),
-      );
-
-      // Первый discovery сразу
-      _runDiscovery();
-
-      debugPrint('[BtMesh] Started. Local: $_localAddress ($info)');
-      return MeshStartResult.ok;
-    } catch (e) {
-      debugPrint('[BtMesh] Start error: $e');
-      return MeshStartResult.error;
+    final state = await FlutterBluePlus.adapterState.first;
+    if (state == BluetoothAdapterState.unavailable) {
+      return MeshStartResult.notAvailable;
     }
+    if (state != BluetoothAdapterState.on) {
+      try {
+        await FlutterBluePlus.turnOn();
+        await FlutterBluePlus.adapterState
+            .where((s) => s == BluetoothAdapterState.on)
+            .first
+            .timeout(const Duration(seconds: 8));
+      } catch (_) {
+        return MeshStartResult.disabled;
+      }
+    }
+
+    _running = true;
+    _startScan();
+
+    _rescanTimer  = Timer.periodic(const Duration(seconds: 25), (_) { if (_running) _startScan(); });
+    _cleanupTimer = Timer.periodic(const Duration(minutes: 2),  (_) { _cleanupStale(); });
+
+    debugPrint('[BtMesh] Started localId=$_localId');
+    return MeshStartResult.ok;
   }
 
   Future<void> stop() async {
     _running = false;
-    _discoveryTimer?.cancel();
+    _rescanTimer?.cancel();
     _cleanupTimer?.cancel();
-
-    for (final conn in _connections.values) {
-      try { conn.dispose(); } catch (_) {}
+    _scanSub?.cancel();
+    await FlutterBluePlus.stopScan().catchError((_) {});
+    for (final c in _peers.values) {
+      c.notifySub?.cancel();
+      c.stateSub?.cancel();
+      try { await c.device.disconnect(); } catch (_) {}
     }
-    _connections.clear();
-    _buffers.clear();
+    _peers.clear();
+    _connecting.clear();
     debugPrint('[BtMesh] Stopped');
   }
 
-  // ─────────────────────────────────────────────
-  // Discovery
-  // ─────────────────────────────────────────────
+  // ── Scan ──────────────────────────────────────────────────────────────────
 
-  Future<void> _runDiscovery() async {
-    if (!_running) return;
-    try {
-      final results = await FlutterBluetoothSerial.instance
-          .startDiscovery()
-          .toList()
-          .timeout(const Duration(seconds: 15), onTimeout: () => []);
+  void _startScan() {
+    FlutterBluePlus.stopScan().catchError((_) {});
+    _scanSub?.cancel();
 
+    _scanSub = FlutterBluePlus.onScanResults.listen((results) {
       for (final r in results) {
-        final addr = r.device.address;
-        final name = r.device.name ?? addr;
-
-        // Фильтрация: подключаемся только к устройствам с UUID нашего сервиса
-        // (проверяем список UUID в discovery result)
-        final uuids = r.device.uuids ?? [];
-        final isKometPeer = uuids.isEmpty || // старый Android не отдаёт UUID
-            uuids.any((u) => u.toString().toLowerCase() == _kometUuid);
-
-        if (!isKometPeer) continue;
-
-        _peers[addr] = MeshPeer(
-          address: addr,
-          name: name,
-          lastSeen: DateTime.now(),
-          isConnected: _connections.containsKey(addr),
-        );
-
-        // Подключаемся если ещё не подключены
-        if (!_connections.containsKey(addr)) {
-          _connectToPeer(addr, name);
+        final id = r.device.remoteId.str;
+        if (!_peers.containsKey(id) && !_connecting.contains(id)) {
+          _connectToPeer(r.device);
         }
       }
+    });
 
-      _notifyPeers();
-    } catch (e) {
-      debugPrint('[BtMesh] Discovery error: $e');
-    }
+    FlutterBluePlus.startScan(
+      withServices: [Guid(_kServiceUuid)],
+      timeout: const Duration(seconds: 20),
+    ).catchError((e) => debugPrint('[BtMesh] Scan error: $e'));
   }
 
-  // ─────────────────────────────────────────────
-  // Подключение к пиру
-  // ─────────────────────────────────────────────
+  // ── Connect ───────────────────────────────────────────────────────────────
 
-  Future<void> _connectToPeer(String address, String name) async {
-    if (_connections.containsKey(address)) return;
+  Future<void> _connectToPeer(BluetoothDevice device) async {
+    final id = device.remoteId.str;
+    if (_peers.containsKey(id) || _connecting.contains(id)) return;
+    _connecting.add(id);
+
     try {
-      final conn = await BluetoothConnection.toAddress(address)
-          .timeout(const Duration(seconds: 8));
+      await device.connect(timeout: const Duration(seconds: 8));
+      await device.requestMtu(128).catchError((_) {});
 
-      _connections[address] = conn;
-      _buffers[address] = [];
+      final services = await device.discoverServices();
+      final svc = services.cast<BluetoothService?>().firstWhere(
+            (s) => s!.uuid == Guid(_kServiceUuid),
+            orElse: () => null,
+          );
+      if (svc == null) { await device.disconnect(); return; }
 
-      final peer = _peers[address];
-      if (peer != null) {
-        _peers[address] = peer.copyWith(isConnected: true, lastSeen: DateTime.now());
-        _notifyPeers();
-      }
+      final char = svc.characteristics.cast<BluetoothCharacteristic?>().firstWhere(
+            (c) => c!.uuid == Guid(_kCharUuid),
+            orElse: () => null,
+          );
+      if (char == null) { await device.disconnect(); return; }
 
-      debugPrint('[BtMesh] Connected to $name ($address)');
+      final conn = _PeerConn(device);
+      conn.char = char;
+      _peers[id] = conn;
 
-      // Слушаем входящие данные
-      conn.input!.listen(
-        (data) => _onData(address, data),
-        onDone: () => _onDisconnect(address),
-        onError: (_) => _onDisconnect(address),
+      await char.setNotifyValue(true);
+      conn.notifySub = char.onValueReceived.listen(
+        (data) => _onChunk(id, data),
+        onError: (_) => _onDisconnect(id),
+        onDone:  () => _onDisconnect(id),
         cancelOnError: true,
       );
+      conn.stateSub = device.connectionState.listen((s) {
+        if (s == BluetoothConnectionState.disconnected) _onDisconnect(id);
+      });
+
+      _notifyPeers();
+      debugPrint('[BtMesh] Connected to ${device.platformName} ($id)');
     } catch (e) {
-      debugPrint('[BtMesh] Connect to $address failed: $e');
+      debugPrint('[BtMesh] Connect $id failed: $e');
+      try { await device.disconnect(); } catch (_) {}
+    } finally {
+      _connecting.remove(id);
     }
   }
 
-  // ─────────────────────────────────────────────
-  // Входящие данные
-  // ─────────────────────────────────────────────
+  // ── Incoming chunks ───────────────────────────────────────────────────────
 
-  void _onData(String address, Uint8List data) {
-    final buf = _buffers[address] ??= [];
-    buf.addAll(data);
+  void _onChunk(String peerId, List<int> data) {
+    final conn = _peers[peerId];
+    if (conn == null) return;
 
-    // Протокол: JSON-объект завершается символом '\n' (0x0A)
-    while (buf.contains(0x0A)) {
-      final idx = buf.indexOf(0x0A);
-      final line = utf8.decode(buf.sublist(0, idx), allowMalformed: true);
-      buf.removeRange(0, idx + 1);
+    if (data.isNotEmpty && data.last == 0x00) {
+      conn.rxBuf.addAll(data.sublist(0, data.length - 1));
+      _processPacket(peerId, List.of(conn.rxBuf));
+      conn.rxBuf.clear();
+    } else {
+      conn.rxBuf.addAll(data);
+    }
+  }
 
-      try {
-        final json = jsonDecode(line) as Map<String, dynamic>;
-        _handleIncomingJson(json);
-      } catch (e) {
-        debugPrint('[BtMesh] Parse error from $address: $e');
+  void _processPacket(String peerId, List<int> bytes) {
+    try {
+      final msg = MeshMessage.fromJson(
+          jsonDecode(utf8.decode(bytes)) as Map<String, dynamic>);
+
+      if (_seenIds.contains(msg.id)) return;
+      _seenIds.add(msg.id);
+      if (_seenIds.length > 512) _seenIds.remove(_seenIds.first);
+
+      if (msg.targetId == '*' || msg.targetId == _localId) {
+        _inCtrl.add(msg);
       }
+      if (msg.ttl > 1 && msg.targetId != _localId) {
+        _relay(msg.copyWith(ttl: msg.ttl - 1, isRelayed: true), except: peerId);
+      }
+    } catch (e) {
+      debugPrint('[BtMesh] Parse error from $peerId: $e');
     }
   }
 
-  void _handleIncomingJson(Map<String, dynamic> json) {
-    final msg = MeshMessage.fromJson(json);
+  // ── Send ──────────────────────────────────────────────────────────────────
 
-    // Дедупликация
-    if (_seenIds.contains(msg.id)) return;
-    _seenIds.add(msg.id);
-    if (_seenIds.length > 500) {
-      // Ограничиваем размер кеша
-      _seenIds.remove(_seenIds.first);
-    }
-
-    final localAddr = _localAddress ?? '';
-
-    // Это сообщение для нас или broadcast?
-    if (msg.targetId == '*' || msg.targetId == localAddr) {
-      _incomingCtrl.add(msg);
-    }
-
-    // Ретрансляция если TTL > 1 и мы не адресат
-    if (msg.ttl > 1 && msg.targetId != localAddr) {
-      final relayed = msg.copyWith(ttl: msg.ttl - 1, isRelayed: true);
-      _relay(relayed, except: msg.originId);
-    }
-  }
-
-  void _relay(MeshMessage msg, {String? except}) {
-    final line = '${jsonEncode(msg.toJson())}\n';
-    final bytes = utf8.encode(line);
-    for (final entry in _connections.entries) {
-      if (entry.key == except) continue;
-      try {
-        entry.value.output.add(Uint8List.fromList(bytes));
-      } catch (_) {}
-    }
-  }
-
-  // ─────────────────────────────────────────────
-  // Отправка сообщения
-  // ─────────────────────────────────────────────
-
-  /// Отправить сообщение в mesh.
-  /// [targetId] == null → broadcast ('*'), иначе MAC конкретного устройства.
   Future<MeshSendResult> send({
     required String text,
     required String senderName,
     String? targetId,
   }) async {
     if (!_running) return MeshSendResult.notRunning;
-    if (_connections.isEmpty) return MeshSendResult.noPeers;
+    final live = _peers.values.where((c) => c.device.isConnected).toList();
+    if (live.isEmpty) return MeshSendResult.noPeers;
 
     final msg = MeshMessage(
-      id: _generateId(),
-      originId: _localAddress ?? 'unknown',
-      targetId: targetId ?? '*',
-      text: text,
-      senderName: senderName,
-      timestamp: DateTime.now().millisecondsSinceEpoch,
-      ttl: 5,
+      id: _genId(), originId: _localId, targetId: targetId ?? '*',
+      text: text, senderName: senderName,
+      timestamp: DateTime.now().millisecondsSinceEpoch, ttl: 5,
     );
-
-    // Помечаем как виденное, чтобы не получить обратно
     _seenIds.add(msg.id);
 
-    final line = '${jsonEncode(msg.toJson())}\n';
-    final bytes = Uint8List.fromList(utf8.encode(line));
-
+    final bytes = utf8.encode(jsonEncode(msg.toJson()));
     int sent = 0;
-    for (final conn in _connections.values) {
-      try {
-        conn.output.add(bytes);
-        sent++;
-      } catch (e) {
-        debugPrint('[BtMesh] Send error: $e');
-      }
+    for (final c in live) {
+      if (await _writeChunked(c, bytes)) sent++;
     }
-
     return sent > 0 ? MeshSendResult.ok : MeshSendResult.noPeers;
   }
 
-  // ─────────────────────────────────────────────
-  // Утилиты
-  // ─────────────────────────────────────────────
-
-  void _onDisconnect(String address) {
-    _connections.remove(address);
-    _buffers.remove(address);
-    final peer = _peers[address];
-    if (peer != null) {
-      _peers[address] = peer.copyWith(isConnected: false);
-      _notifyPeers();
+  Future<bool> _writeChunked(_PeerConn conn, List<int> bytes) async {
+    if (conn.char == null) return false;
+    try {
+      for (int i = 0; i < bytes.length; i += _kChunkSize) {
+        final end    = (i + _kChunkSize < bytes.length) ? i + _kChunkSize : bytes.length;
+        final isLast = end == bytes.length;
+        final chunk  = Uint8List.fromList(
+          isLast ? [...bytes.sublist(i, end), 0x00] : bytes.sublist(i, end),
+        );
+        await conn.char!.write(chunk, withoutResponse: true);
+      }
+      return true;
+    } catch (e) {
+      debugPrint('[BtMesh] Write error: $e');
+      return false;
     }
-    debugPrint('[BtMesh] Disconnected from $address');
   }
 
-  void _cleanupPeers() {
-    final threshold = DateTime.now().subtract(const Duration(minutes: 10));
-    _peers.removeWhere(
-      (addr, peer) => !peer.isConnected && peer.lastSeen.isBefore(threshold),
-    );
+  void _relay(MeshMessage msg, {String? except}) {
+    final bytes = utf8.encode(jsonEncode(msg.toJson()));
+    for (final e in _peers.entries) {
+      if (e.key == except || !e.value.device.isConnected) continue;
+      _writeChunked(e.value, bytes);
+    }
+  }
+
+  // ── Helpers ───────────────────────────────────────────────────────────────
+
+  void _onDisconnect(String id) {
+    final c = _peers.remove(id);
+    c?.notifySub?.cancel();
+    c?.stateSub?.cancel();
+    _notifyPeers();
+    debugPrint('[BtMesh] Disconnected: $id');
+  }
+
+  void _cleanupStale() {
+    _peers.removeWhere((_, c) => !c.device.isConnected);
     _notifyPeers();
   }
 
-  void _notifyPeers() {
-    _peersCtrl.add(List.unmodifiable(_peers.values));
-  }
+  void _notifyPeers() => _peersCtrl.add(currentPeers);
 
-  String _generateId() {
-    final rng = Random.secure();
-    return List.generate(16, (_) => rng.nextInt(256))
-        .map((b) => b.toRadixString(16).padLeft(2, '0'))
-        .join();
-  }
+  String _genId() => List.generate(
+        16, (_) => Random.secure().nextInt(256).toRadixString(16).padLeft(2, '0'),
+      ).join();
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Результаты операций
-// ─────────────────────────────────────────────────────────────────────────────
-
-enum MeshStartResult {
-  ok,
-  alreadyRunning,
-  notAvailable,
-  disabled,
-  error,
-}
-
-enum MeshSendResult {
-  ok,
-  notRunning,
-  noPeers,
-}
+enum MeshStartResult { ok, alreadyRunning, notAvailable, disabled, error }
+enum MeshSendResult  { ok, notRunning, noPeers }

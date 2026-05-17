@@ -80,7 +80,7 @@ dependencies:
   chewie: ^1.7.5
   just_audio: ^0.9.40
   platform_info: ^5.0.0
-  flutter_bluetooth_serial: ^0.4.0
+  flutter_blue_plus: ^1.35.3
 
 dev_dependencies:
   # SDK зависимости
