@@ -8,6 +8,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'plugin_model.dart';
 import 'plugin_permissions.dart';
+import 'plugin_js_engine.dart';
 
 class PluginService {
   static final PluginService _instance = PluginService._internal();
@@ -67,6 +68,9 @@ class PluginService {
     }
 
     _initialized = true;
+
+    // Запускаем JS-движки для включённых плагинов со скриптом
+    await PluginJsEngine().startAll(enabledPlugins);
   }
 
   // ─────────────────────────────────────────────
@@ -231,6 +235,9 @@ class PluginService {
     _removePluginConstants(plugin);
     _plugins.removeWhere((p) => p.id == pluginId);
 
+    // Останавливаем JS-движок плагина
+    await PluginJsEngine().stopPlugin(pluginId);
+
     // Удаляем директорию плагина
     try {
       final dir = Directory(plugin.pluginDir);
@@ -258,8 +265,12 @@ class PluginService {
 
     if (enabled) {
       _applyPluginConstants(plugin);
+      if (plugin.scriptPath != null) {
+        await PluginJsEngine().startPlugin(plugin);
+      }
     } else {
       _removePluginConstants(plugin);
+      await PluginJsEngine().stopPlugin(pluginId);
     }
 
     await _saveState();
