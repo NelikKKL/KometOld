@@ -22,6 +22,7 @@ import 'package:gwid/screens/search_contact_screen.dart';
 import 'package:gwid/screens/downloads_screen.dart';
 import 'package:gwid/utils/user_id_lookup_screen.dart';
 import 'package:gwid/screens/music_library_screen.dart';
+import 'package:gwid/screens/mesh_chat_screen.dart';
 import 'package:gwid/widgets/message_preview_dialog.dart';
 import 'package:gwid/services/chat_read_settings_service.dart';
 import 'package:gwid/services/local_profile_manager.dart';
@@ -1839,6 +1840,19 @@ class _ChatsScreenState extends State<ChatsScreen>
                       Navigator.of(context).push(
                         MaterialPageRoute(
                           builder: (context) => const MusicLibraryScreen(),
+                        ),
+                      );
+                    },
+                  ),
+                  ListTile(
+                    leading: const Icon(Icons.bluetooth_searching_rounded),
+                    title: const Text('Mesh-чат'),
+                    subtitle: const Text('Bluetooth · без интернета'),
+                    onTap: () {
+                      Navigator.pop(context);
+                      Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (context) => const MeshChatScreen(),
                         ),
                       );
                     },
