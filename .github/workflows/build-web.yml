@@ -37,8 +37,7 @@ jobs:
       - name: Build Web
         run: |
           flutter build web --release \
-            --web-renderer canvaskit \
-            --dart-define=FLUTTER_WEB_CANVASKIT_URL=canvaskit/ \
+            --wasm \
             --no-tree-shake-icons
 
       - name: Upload Web artifact
