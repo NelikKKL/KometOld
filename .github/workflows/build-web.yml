@@ -1,0 +1,82 @@
+name: Build Web
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  build-web:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.38.5'
+          channel: 'stable'
+
+      - name: Enable Flutter Web
+        run: flutter config --enable-web
+
+      - name: Get dependencies
+        run: flutter pub get
+
+      - name: Analyze (web target)
+        run: flutter analyze --no-fatal-infos
+        continue-on-error: true
+
+      - name: Build Web
+        run: |
+          flutter build web --release \
+            --web-renderer canvaskit \
+            --dart-define=FLUTTER_WEB_CANVASKIT_URL=canvaskit/ \
+            --no-tree-shake-icons
+
+      - name: Upload Web artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: komet-web
+          path: build/web/
+          retention-days: 30
+
+  # Опциональный деплой на GitHub Pages
+  # Раскомментируй секцию ниже и добавь в настройках репо:
+  #   Settings → Pages → Source → GitHub Actions
+  #
+  # deploy-pages:
+  #   needs: build-web
+  #   runs-on: ubuntu-latest
+  #   permissions:
+  #     contents: read
+  #     pages: write
+  #     id-token: write
+  #   environment:
+  #     name: github-pages
+  #     url: ${{ steps.deployment.outputs.page_url }}
+  #   steps:
+  #     - name: Download artifact
+  #       uses: actions/download-artifact@v4
+  #       with:
+  #         name: komet-web
+  #         path: ./web-dist
+  #
+  #     - name: Setup Pages
+  #       uses: actions/configure-pages@v4
+  #
+  #     - name: Upload to Pages
+  #       uses: actions/upload-pages-artifact@v3
+  #       with:
+  #         path: ./web-dist
+  #
+  #     - name: Deploy to GitHub Pages
+  #       id: deployment
+  #       uses: actions/deploy-pages@v4
