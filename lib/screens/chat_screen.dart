@@ -42,6 +42,7 @@ import 'package:gwid/screens/chat/models/chat_item.dart';
 import 'package:gwid/screens/chat/widgets/empty_chat_widget.dart';
 import 'package:gwid/widgets/message_bubble/models/message_read_status.dart';
 import 'package:gwid/screens/chats_screen.dart';
+import 'package:gwid/plugins/plugin_chat_hooks.dart';
 
 bool _debugShowExactDate = false;
 
@@ -94,6 +95,9 @@ class _ChatScreenState extends State<ChatScreen> {
   final Set<String> _messagesToAnimate = {};
   List<Map<String, dynamic>> _cachedAllPhotos = [];
   String? _highlightedMessageId;
+
+  // Plugin API: пункты меню от плагинов (загружаются при открытии меню)
+  List<PluginChatMenuItem> _pluginMenuItems = [];
 
   bool _isLoadingHistory = true;
   Map<String, dynamic>? _emptyChatSticker;
@@ -1220,19 +1224,37 @@ class _ChatScreenState extends State<ChatScreen> {
         if (newMessage.status == 'REMOVED') {
           _removeMessages([newMessage.id]);
         } else {
+          // ── Plugin API: перехват входящих сообщений ──
+          final _incomingCtx = MessageInterceptContext(
+            chatId: widget.chatId,
+            text: newMessage.text,
+            senderId: newMessage.senderId,
+            direction: MessageDirection.incoming,
+            messageId: newMessage.id,
+          );
+          final _interceptedIncoming = await PluginChatHooks().applyIncomingInterceptors(_incomingCtx);
+          if (_interceptedIncoming == null) {
+            // Плагин заблокировал показ сообщения
+            return;
+          }
+          final processedMessage = _interceptedIncoming != newMessage.text
+              ? newMessage.copyWith(text: _interceptedIncoming)
+              : newMessage;
+          // ─────────────────────────────────────────────
+
           unawaited(
-            ChatCacheService().addMessageToCache(widget.chatId, newMessage),
+            ChatCacheService().addMessageToCache(widget.chatId, processedMessage),
           );
           Future.microtask(() {
             if (!mounted) return;
-            final hasSameId = _messages.any((m) => m.id == newMessage.id);
+            final hasSameId = _messages.any((m) => m.id == processedMessage.id);
             final hasSameCid =
-                newMessage.cid != null &&
-                _messages.any((m) => m.cid != null && m.cid == newMessage.cid);
+                processedMessage.cid != null &&
+                _messages.any((m) => m.cid != null && m.cid == processedMessage.cid);
             if (hasSameId || hasSameCid) {
-              _updateMessage(newMessage);
+              _updateMessage(processedMessage);
             } else {
-              _addMessage(newMessage);
+              _addMessage(processedMessage);
             }
           });
         }
@@ -2455,6 +2477,21 @@ class _ChatScreenState extends State<ChatScreen> {
       if (textToSend != originalText) {
         _textController.elements.clear();
       }
+
+      // ── Plugin API: перехват исходящих сообщений ──
+      final _outgoingCtx = MessageInterceptContext(
+        chatId: widget.chatId,
+        text: textToSend,
+        senderId: _actualMyId ?? 0,
+        direction: MessageDirection.outgoing,
+      );
+      final _interceptedText = await PluginChatHooks().applyOutgoingInterceptors(_outgoingCtx);
+      if (_interceptedText == null) {
+        // Плагин заблокировал отправку
+        return;
+      }
+      textToSend = _interceptedText;
+      // ─────────────────────────────────────────────
 
       final int tempCid = DateTime.now().millisecondsSinceEpoch;
       final List<Map<String, dynamic>> tempElements =
@@ -4083,7 +4120,20 @@ class _ChatScreenState extends State<ChatScreen> {
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(12),
           ),
+          onOpened: () async {
+            final items = await PluginChatHooks().getChatMenuItems();
+            if (mounted) setState(() => _pluginMenuItems = items);
+          },
           onSelected: (value) {
+            // Plugin API: обработка пунктов от плагинов
+            final pluginItem = _pluginMenuItems
+                .where((item) => 'plugin_${item.pluginId}_${item.id}' == value)
+                .firstOrNull;
+            if (pluginItem != null) {
+              pluginItem.onTap(widget.chatId, context);
+              return;
+            }
+
             if (value == 'search') {
               _startSearch();
             } else if (value == 'block') {
@@ -4279,6 +4329,29 @@ class _ChatScreenState extends State<ChatScreen> {
                     ],
                   ),
                 ),
+
+              // ── Plugin API: пункты меню от плагинов ──
+              if (_pluginMenuItems.isNotEmpty) ...[
+                const PopupMenuDivider(),
+                ..._pluginMenuItems.map((item) => PopupMenuItem<String>(
+                  value: 'plugin_${item.pluginId}_${item.id}',
+                  child: Row(
+                    children: [
+                      Icon(
+                        item.icon,
+                        color: item.color ?? Theme.of(context).colorScheme.onSurface,
+                        size: 22,
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        item.label,
+                        style: TextStyle(color: item.color),
+                      ),
+                    ],
+                  ),
+                )),
+              ],
+              // ─────────────────────────────────────────
             ];
           },
         ),

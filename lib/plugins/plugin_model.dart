@@ -19,6 +19,9 @@ class KometPlugin {
   final List<PluginSubsection> settingsSubsections;
   final Map<String, PluginScreen> replaceScreens;
 
+  /// Разрешения, которые плагин запрашивает (из manifest.json → "permissions")
+  final List<String> requestedPermissions;
+
   bool isEnabled;
 
   KometPlugin({
@@ -34,6 +37,7 @@ class KometPlugin {
     this.settingsSections = const [],
     this.settingsSubsections = const [],
     this.replaceScreens = const {},
+    this.requestedPermissions = const [],
     this.isEnabled = true,
   });
 
@@ -70,6 +74,9 @@ class KometPlugin {
             (k, v) => MapEntry(k, PluginScreen.fromJson(v)),
           ) ??
           {},
+      requestedPermissions:
+          (json['permissions'] as List?)?.map((e) => e.toString()).toList() ??
+          [],
       isEnabled: json['isEnabled'] ?? true,
     );
   }
@@ -87,6 +94,7 @@ class KometPlugin {
     'settingsSections': settingsSections.map((e) => e.toJson()).toList(),
     'settingsSubsections': settingsSubsections.map((e) => e.toJson()).toList(),
     'replaceScreens': replaceScreens.map((k, v) => MapEntry(k, v.toJson())),
+    'permissions': requestedPermissions,
     'isEnabled': isEnabled,
   };
 

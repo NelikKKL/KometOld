@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:gwid/plugins/plugin_model.dart';
 import 'package:gwid/plugins/plugin_service.dart';
+import 'package:gwid/plugins/plugin_chat_hooks.dart';
+import 'package:gwid/screens/settings/plugin_permissions_screen.dart';
 
 class PluginsScreen extends StatefulWidget {
   const PluginsScreen({super.key});
@@ -152,6 +154,7 @@ class _PluginsScreenState extends State<PluginsScreen> {
           onToggle: (enabled) => _togglePlugin(plugin.id, enabled),
           onDelete: () => _deletePlugin(plugin.id),
           onTap: () => _showPluginDetails(plugin),
+          onShowPermissions: () => _showPermissions(plugin),
         );
       },
     );
@@ -236,6 +239,8 @@ class _PluginsScreenState extends State<PluginsScreen> {
     );
 
     if (confirmed == true) {
+      // Очищаем хуки чата перед удалением
+      PluginChatHooks().removePlugin(pluginId);
       await _pluginService.uninstallPlugin(pluginId);
       setState(() {});
       _showSuccessSnack('Плагин "${plugin.name}" удалён');
@@ -249,6 +254,14 @@ class _PluginsScreenState extends State<PluginsScreen> {
       useSafeArea: true,
       backgroundColor: Colors.transparent,
       builder: (context) => _PluginDetailsSheet(plugin: plugin),
+    );
+  }
+
+  void _showPermissions(KometPlugin plugin) {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => PluginPermissionsScreen(plugin: plugin),
+      ),
     );
   }
 
@@ -284,13 +297,78 @@ class _PluginListTile extends StatelessWidget {
   final ValueChanged<bool> onToggle;
   final VoidCallback onDelete;
   final VoidCallback onTap;
+  final VoidCallback onShowPermissions;
 
   const _PluginListTile({
     required this.plugin,
     required this.onToggle,
     required this.onDelete,
     required this.onTap,
+    required this.onShowPermissions,
   });
+
+  void _showContextMenu(BuildContext context) {
+    final theme = Theme.of(context);
+    final RenderBox box = context.findRenderObject() as RenderBox;
+    final Offset offset = box.localToGlobal(Offset.zero);
+
+    showMenu<String>(
+      context: context,
+      position: RelativeRect.fromLTRB(
+        offset.dx,
+        offset.dy + 40,
+        offset.dx + box.size.width,
+        offset.dy + box.size.height,
+      ),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+      elevation: 4,
+      items: [
+        PopupMenuItem<String>(
+          value: 'permissions',
+          child: Row(
+            children: [
+              Icon(
+                Icons.shield_outlined,
+                size: 20,
+                color: theme.colorScheme.primary,
+              ),
+              const SizedBox(width: 12),
+              Text(
+                'Разрешения',
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ],
+          ),
+        ),
+        const PopupMenuDivider(height: 1),
+        PopupMenuItem<String>(
+          value: 'delete',
+          child: Row(
+            children: [
+              Icon(
+                Icons.delete_outline_rounded,
+                size: 20,
+                color: theme.colorScheme.error,
+              ),
+              const SizedBox(width: 12),
+              Text(
+                'Удалить',
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  fontWeight: FontWeight.w500,
+                  color: theme.colorScheme.error,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    ).then((value) {
+      if (value == 'delete') onDelete();
+      if (value == 'permissions') onShowPermissions();
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -300,7 +378,7 @@ class _PluginListTile extends StatelessWidget {
       color: Colors.transparent,
       child: InkWell(
         onTap: onTap,
-        onLongPress: onDelete,
+        onLongPress: () => _showContextMenu(context),
         borderRadius: BorderRadius.circular(16),
         child: Padding(
           padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 4),

@@ -7,6 +7,7 @@ import 'package:path/path.dart' as p;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'plugin_model.dart';
+import 'plugin_permissions.dart';
 
 class PluginService {
   static final PluginService _instance = PluginService._internal();
@@ -202,6 +203,14 @@ class PluginService {
         _applyPluginConstants(plugin);
       }
 
+      // Инициализируем разрешения для нового плагина
+      final permStore = PluginPermissionsStore();
+      await permStore.load();
+      await permStore.initPluginPermissions(
+        plugin.id,
+        plugin.requestedPermissions,
+      );
+
       await _saveState();
 
       return KometPluginInstallResult.success(plugin);
@@ -231,6 +240,11 @@ class PluginService {
     } catch (e) {
       debugPrint('Ошибка удаления директории плагина: $e');
     }
+
+    // Удаляем разрешения плагина
+    final permStore = PluginPermissionsStore();
+    await permStore.load();
+    await permStore.removePlugin(pluginId);
 
     await _saveState();
   }
