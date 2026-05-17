@@ -30,15 +30,15 @@ jobs:
       - name: Get dependencies
         run: flutter pub get
 
+      - name: Configure web platform
+        run: flutter create . --platforms web
+
       - name: Analyze (web target)
         run: flutter analyze --no-fatal-infos
         continue-on-error: true
 
       - name: Build Web
-        run: |
-          flutter build web --release \
-            --wasm \
-            --no-tree-shake-icons
+        run: flutter build web --release --no-tree-shake-icons
 
       - name: Upload Web artifact
         uses: actions/upload-artifact@v4
