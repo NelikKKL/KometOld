@@ -1169,7 +1169,7 @@ class _ChatScreenState extends State<ChatScreen> {
       }
     });
 
-    _apiSubscription = ApiService.instance.messages.listen((message) {
+    _apiSubscription = ApiService.instance.messages.listen((message) async {
       if (!mounted) return;
 
       final opcode = message['opcode'];
